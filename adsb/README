@@ -49,161 +49,64 @@ Leave `ES_CLOUD_ID` empty to use local mode.
 
 ### 3. Set up Elasticsearch
 
-Before starting Logstash, set up the enrich policy, ingest pipeline, and index template. All commands below use Kibana Dev Tools unless noted otherwise.
+Before starting Logstash, create the enrich policy, ingest pipeline, and index template. All commands below use `curl` and reference the JSON files in `elasticsearch/`.
 
-**Step 1 — Create the geo shapes source index:**
-
-```
-PUT geo.shapes-world.countries-50m
-```
-
-Then apply the mapping from `elasticsearch/geo-shapes-world-countries-50m-mapping.json`:
-
-```
-PUT geo.shapes-world.countries-50m/_mapping
-<paste contents of geo-shapes-world-countries-50m-mapping.json → "mappings" object>
-```
-
-**Step 2 — Load the geo shapes data:**
-
-The data file is too large for Dev Tools. Use curl to bulk-load it:
+Load your `.env` into the current shell so the `curl` commands below can read `ES_URL`, `ES_USER`, and `ES_PW`:
 
 ```bash
-# Elastic Cloud
-curl -s -X POST \
+set -a; source .env; set +a
+```
+
+**Step 1 — Create the geo shapes source index with mapping:**
+
+```bash
+curl -s -X PUT "${ES_URL%/}/geo.shapes-world.countries-50m?pretty" \
+  -u "$(printenv ES_USER):$(printenv ES_PW)" \
   -H "Content-Type: application/json" \
-  "https://<ES_HOST>:443/geo.shapes-world.countries-50m/_bulk?pretty" \
-  -u "elastic:<password>" \
-  --data-binary @elasticsearch/geo-shapes-world-countries-50m-data.json
+  -d @elasticsearch/geo-shapes-world-countries-50m-mapping.json
+```
 
-# Local
-curl -s -X POST \
+**Step 2 — Bulk-load the geo shapes data:**
+
+```bash
+curl -s -X POST "${ES_URL%/}/geo.shapes-world.countries-50m/_bulk?pretty" \
+  -u "$(printenv ES_USER):$(printenv ES_PW)" \
+  -H "Content-Type: application/x-ndjson" \
+  --data-binary @elasticsearch/geo-shapes-world-countries-50m-data.json
+```
+
+**Step 3 — Create the enrich policy:**
+
+```bash
+curl -s -X PUT "${ES_URL%/}/_enrich/policy/opensky-geo-enrich-50m?pretty" \
+  -u "$(printenv ES_USER):$(printenv ES_PW)" \
   -H "Content-Type: application/json" \
-  "https://localhost:9200/geo.shapes-world.countries-50m/_bulk?pretty" \
-  -u "elastic:<password>" \
-  --data-binary @elasticsearch/geo-shapes-world-countries-50m-data.json
+  -d @elasticsearch/enrich-policy.json
 ```
 
-**Step 3 — Create and execute the enrich policy (Dev Tools):**
+**Step 4 — Execute the enrich policy to build the enrich index:**
 
-```
-PUT _enrich/policy/opensky-geo-enrich-50m
-{
-  "geo_match": {
-    "indices": ["geo.shapes-world.countries-50m"],
-    "match_field": "geometry",
-    "enrich_fields": [
-      "CONTINENT", "REGION_UN", "REGION_WB", "SUBREGION",
-      "SOVEREIGNT", "ADMIN", "ADM0_A3", "NAME",
-      "BRK_A3", "ISO_A3", "NAME_LONG"
-    ]
-  }
-}
+```bash
+curl -s -X POST "${ES_URL%/}/_enrich/policy/opensky-geo-enrich-50m/_execute?pretty" \
+  -u "$(printenv ES_USER):$(printenv ES_PW)"
 ```
 
-Then execute it to build the enrich index:
+**Step 5 — Create the ingest pipeline:**
 
-```
-POST _enrich/policy/opensky-geo-enrich-50m/_execute
-```
-
-**Step 4 — Create the ingest pipeline (Dev Tools):**
-
-```
-PUT _ingest/pipeline/demo-aircraft-adsb.opensky
-{
-  "processors": [
-    {
-      "enrich": {
-        "ignore_failure": true,
-        "policy_name": "opensky-geo-enrich-50m",
-        "ignore_missing": true,
-        "field": "location",
-        "target_field": "geo"
-      }
-    },
-    {
-      "remove": {
-        "ignore_failure": true,
-        "ignore_missing": true,
-        "field": ["geo.geometry", "data_stream"]
-      }
-    },
-    {
-      "trim": {
-        "ignore_failure": true,
-        "ignore_missing": true,
-        "field": "callsign"
-      }
-    }
-  ]
-}
+```bash
+curl -s -X PUT "${ES_URL%/}/_ingest/pipeline/demo-aircraft-adsb.opensky?pretty" \
+  -u "$(printenv ES_USER):$(printenv ES_PW)" \
+  -H "Content-Type: application/json" \
+  -d @elasticsearch/ingest-pipeline.json
 ```
 
-**Step 5 — Create the index template (Dev Tools):**
+**Step 6 — Create the index template:**
 
-```
-PUT _index_template/demos-aircraft-adsb
-{
-  "index_patterns": ["demos-aircraft-adsb*"],
-  "template": {
-    "settings": {
-      "index": {
-        "mode": "time_series",
-        "default_pipeline": "demo-aircraft-adsb.opensky",
-        "mapping": {
-          "source": {
-            "mode": "synthetic"
-          }
-        }
-      }
-    },
-    "mappings": {
-      "_source": {
-        "mode": "synthetic"
-      },
-      "dynamic_templates": [
-        {
-          "strings": {
-            "mapping": { "type": "keyword" },
-            "match_mapping_type": "string"
-          }
-        }
-      ],
-      "properties": {
-        "baro_altitude": { "type": "float" },
-        "callsign": {
-          "type": "keyword",
-          "eager_global_ordinals": true,
-          "null_value": "Not Assigned",
-          "index_options": "freqs"
-        },
-        "geo_altitude": { "type": "float" },
-        "icao24": { "type": "keyword", "time_series_dimension": true },
-        "last_contact": { "type": "date", "format": "epoch_second" },
-        "latitude": { "type": "float" },
-        "location": { "type": "geo_point" },
-        "longitude": { "type": "float" },
-        "on_ground": { "type": "boolean" },
-        "origin_country": { "type": "keyword" },
-        "position_source": { "type": "integer" },
-        "spi": { "type": "boolean" },
-        "squawk": { "type": "keyword" },
-        "time_position": { "type": "date", "format": "epoch_second" },
-        "true_track": { "type": "float" },
-        "velocity": { "type": "float" },
-        "vertical_rate": { "type": "float" }
-      }
-    },
-    "lifecycle": {
-      "enabled": true,
-      "data_retention": "730d"
-    }
-  },
-  "data_stream": {},
-  "composed_of": [],
-  "allow_auto_create": true
-}
+```bash
+curl -s -X PUT "${ES_URL%/}/_index_template/demos-aircraft-adsb?pretty" \
+  -u "$(printenv ES_USER):$(printenv ES_PW)" \
+  -H "Content-Type: application/json" \
+  -d @elasticsearch/index-template.json
 ```
 
 ### 4. Run

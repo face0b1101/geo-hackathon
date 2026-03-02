@@ -1,32 +1,27 @@
 {
-  "demo-aircraft-adsb.opensky": {
-    "processors": [
-      {
-        "enrich": {
-          "ignore_failure": true,
-          "policy_name": "opensky-geo-enrich-50m",
-          "ignore_missing": true,
-          "field": "location",
-          "target_field": "geo"
-        }
-      },
-      {
-        "remove": {
-          "ignore_failure": true,
-          "ignore_missing": true,
-          "field": [
-            "geo.geometry",
-            "data_stream"
-          ]
-        }
-      },
-      {
-        "trim": {
-          "ignore_failure": true,
-          "ignore_missing": true,
-          "field": "callsign"
-        }
+  "processors": [
+    {
+      "enrich": {
+        "ignore_failure": true,
+        "policy_name": "opensky-geo-enrich-50m",
+        "ignore_missing": true,
+        "field": "location",
+        "target_field": "geo"
       }
-    ]
-  }
+    },
+    {
+      "remove": {
+        "ignore_failure": true,
+        "ignore_missing": true,
+        "field": ["geo.geometry", "data_stream"]
+      }
+    },
+    {
+      "trim": {
+        "ignore_failure": true,
+        "ignore_missing": true,
+        "field": "callsign"
+      }
+    }
+  ]
 }

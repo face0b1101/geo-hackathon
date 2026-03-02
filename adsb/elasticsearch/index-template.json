@@ -1,124 +1,115 @@
 {
-  "index_templates": [
-    {
-      "name": "demos-aircraft-adsb",
-      "index_template": {
-        "index_patterns": [
-          "demos-aircraft-adsb*"
-        ],
-        "template": {
-          "settings": {
-            "index": {
-              "mode": "time_series",
-              "default_pipeline": "demo-aircraft-adsb.opensky",
-              "mapping": {
-                "source": {
-                  "mode": "synthetic"
-                }
-              }
-            }
-          },
-          "mappings": {
-            "_source": {
+    "index_patterns": ["demos-aircraft-adsb*"],
+    "template": {
+      "settings": {
+        "index": {
+          "mode": "time_series",
+          "default_pipeline": "demo-aircraft-adsb.opensky",
+          "mapping": {
+            "source": {
               "mode": "synthetic"
-            },
-            "dynamic_templates": [
-              {
-                "strings": {
-                  "mapping": {
-                    "type": "keyword"
-                  },
-                  "match_mapping_type": "string"
-                }
-              }
-            ],
-            "properties": {
-              "geo_altitude": {
-                "type": "float"
-              },
-              "icao24": {
-                "time_series_dimension": true,
-                "type": "keyword"
-              },
-              "latitude": {
-                "type": "float"
-              },
-              "true_track": {
-                "type": "float"
-              },
-              "velocity": {
-                "type": "float"
-              },
-              "spi": {
-                "type": "boolean"
-              },
-              "origin_country": {
-                "type": "keyword"
-              },
-              "squawk": {
-                "type": "keyword"
-              },
-              "baro_altitude": {
-                "type": "float"
-              },
-              "time_position": {
-                "format": "epoch_second",
-                "index": true,
-                "ignore_malformed": false,
-                "store": false,
-                "type": "date",
-                "doc_values": true
-              },
-              "last_contact": {
-                "format": "epoch_second",
-                "index": true,
-                "ignore_malformed": false,
-                "store": false,
-                "type": "date",
-                "doc_values": true
-              },
-              "callsign": {
-                "eager_global_ordinals": true,
-                "norms": false,
-                "null_value": "Not Assigned",
-                "index": true,
-                "store": false,
-                "type": "keyword",
-                "split_queries_on_whitespace": false,
-                "index_options": "freqs",
-                "doc_values": true
-              },
-              "location": {
-                "type": "geo_point"
-              },
-              "on_ground": {
-                "type": "boolean"
-              },
-              "position_source": {
-                "type": "integer"
-              },
-              "vertical_rate": {
-                "type": "float"
-              },
-              "longitude": {
-                "type": "float"
-              }
             }
-          },
-          "lifecycle": {
-            "enabled": true,
-            "data_retention": "730d"
           }
+        }
+      },
+      "mappings": {
+        "_source": {
+          "mode": "synthetic"
         },
-        "composed_of": [],
-        "version": 2,
-        "data_stream": {
-          "hidden": false,
-          "allow_custom_routing": false
-        },
-        "allow_auto_create": true,
-        "ignore_missing_component_templates": []
+        "dynamic_templates": [
+          {
+            "strings": {
+              "mapping": {
+                "type": "keyword"
+              },
+              "match_mapping_type": "string"
+            }
+          }
+        ],
+        "properties": {
+          "geo_altitude": {
+            "type": "float"
+          },
+          "icao24": {
+            "time_series_dimension": true,
+            "type": "keyword"
+          },
+          "latitude": {
+            "type": "float"
+          },
+          "true_track": {
+            "type": "float"
+          },
+          "velocity": {
+            "type": "float"
+          },
+          "spi": {
+            "type": "boolean"
+          },
+          "origin_country": {
+            "type": "keyword"
+          },
+          "squawk": {
+            "type": "keyword"
+          },
+          "baro_altitude": {
+            "type": "float"
+          },
+          "time_position": {
+            "format": "epoch_second",
+            "index": true,
+            "ignore_malformed": false,
+            "store": false,
+            "type": "date",
+            "doc_values": true
+          },
+          "last_contact": {
+            "format": "epoch_second",
+            "index": true,
+            "ignore_malformed": false,
+            "store": false,
+            "type": "date",
+            "doc_values": true
+          },
+          "callsign": {
+            "eager_global_ordinals": true,
+            "norms": false,
+            "null_value": "Not Assigned",
+            "index": true,
+            "store": false,
+            "type": "keyword",
+            "split_queries_on_whitespace": false,
+            "index_options": "freqs",
+            "doc_values": true
+          },
+          "location": {
+            "type": "geo_point"
+          },
+          "on_ground": {
+            "type": "boolean"
+          },
+          "position_source": {
+            "type": "integer"
+          },
+          "vertical_rate": {
+            "type": "float"
+          },
+          "longitude": {
+            "type": "float"
+          }
+        }
+      },
+      "lifecycle": {
+        "enabled": true,
+        "data_retention": "730d"
       }
-    }
-  ]
-}
+    },
+    "composed_of": [],
+    "version": 2,
+    "data_stream": {
+      "hidden": false,
+      "allow_custom_routing": false
+    },
+    "allow_auto_create": true,
+    "ignore_missing_component_templates": []
+  }
