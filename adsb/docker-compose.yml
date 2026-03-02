@@ -1,0 +1,38 @@
+---
+version: "3.8"
+
+services:
+  logstash:
+    image: docker.elastic.co/logstash/logstash:${ELASTIC_STACK_VERSION}
+    container_name: logstash
+    restart: unless-stopped
+    user: "1001"
+    volumes:
+      - ${DOCKER_HOME}/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ${DOCKER_HOME}/logstash/config/pipelines.yml:/usr/share/logstash/config/pipelines.yml
+      - ${DOCKER_HOME}/logstash/pipeline:/usr/share/logstash/pipeline
+      - ${DOCKER_HOME}/logstash/files:/usr/share/logstash/files
+      - logstash_data:/usr/share/logstash/data
+    environment:
+      LS_PIPELINE_WORKERS: ${LS_PIPELINE_WORKERS}
+      LS_LOG_LEVEL: ${LS_LOG_LEVEL}
+      LS_MONITORING_ENABLED: ${LS_MONITORING_ENABLED}
+      LS_MONITORING_CLUSTER_UUID: ${LS_MONITORING_CLUSTER_UUID}
+      LS_API_USER: ${LS_API_USER}
+      LS_API_PW: ${LS_API_PW}
+      LS_HTTP_USER: ${LS_HTTP_USER}
+      LS_HTTP_PW: ${LS_HTTP_PW}
+      ES_CLOUD_ID: ${ES_CLOUD_ID}
+      ES_CLOUD_AUTH: ${ES_CLOUD_AUTH}
+      ES_HOSTS: ${ES_HOSTS}
+      ES_USER: ${ES_USER}
+      ES_PW: ${ES_PW}
+      ES_SSL_VERIFICATION: ${ES_SSL_VERIFICATION}
+      OPENSKY_API_USER: ${OPENSKY_API_USER}
+      OPENSKY_API_PW: ${OPENSKY_API_PW}
+
+
+volumes:
+  logstash_data:
+    name: logstash_data
+    external: true

@@ -1,0 +1,19 @@
+{
+  "geo_match": {
+    "indices": ["geo.shapes-world.countries-50m"],
+    "match_field": "geometry",
+    "enrich_fields": [
+      "CONTINENT",
+      "REGION_UN",
+      "REGION_WB",
+      "SUBREGION",
+      "SOVEREIGNT",
+      "ADMIN",
+      "ADM0_A3",
+      "NAME",
+      "BRK_A3",
+      "ISO_A3",
+      "NAME_LONG"
+    ]
+  }
+}

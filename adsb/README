@@ -1,0 +1,319 @@
+# ADS-B Flight Tracker
+
+Logstash pipelines that poll live aircraft positions from the [OpenSky Network API](https://opensky-network.org) and index them into Elasticsearch as a data stream.
+
+The globe is split into four quadrants so each pipeline covers one quarter of the world:
+
+| Pipeline  | Coverage                    | Bounding box                |
+| --------- | --------------------------- | --------------------------- |
+| `adsb-q1` | North-West (Americas/North) | lat 0 to 90, lon -180 to 0  |
+| `adsb-q2` | North-East (Europe/Asia)    | lat 0 to 90, lon 0 to 180   |
+| `adsb-q3` | South-West (Americas/South) | lat -90 to 0, lon -180 to 0 |
+| `adsb-q4` | South-East (Africa/Oceania) | lat -90 to 0, lon 0 to 180  |
+
+## Quick Start
+
+### 1. Prerequisites
+
+- Docker and Docker Compose
+- An OpenSky Network account (free): https://opensky-network.org/register
+- An Elasticsearch cluster (cloud or local)
+
+### 2. Configure
+
+```bash
+cd adsb
+cp .env.example .env
+```
+
+Edit `.env` and fill in your credentials. Choose **one** of:
+
+**Elastic Cloud:**
+
+```
+ES_CLOUD_ID=my-deployment:abc123...
+ES_CLOUD_AUTH=elastic:changeme
+```
+
+**Local / self-managed Elasticsearch:**
+
+```
+ES_CLOUD_ID=
+ES_CLOUD_AUTH=
+ES_HOSTS=https://localhost:9200
+ES_USER=elastic
+ES_PW=changeme
+```
+
+Leave `ES_CLOUD_ID` empty to use local mode.
+
+### 3. Set up Elasticsearch
+
+Before starting Logstash, set up the enrich policy, ingest pipeline, and index template. All commands below use Kibana Dev Tools unless noted otherwise.
+
+**Step 1 — Create the geo shapes source index:**
+
+```
+PUT geo.shapes-world.countries-50m
+```
+
+Then apply the mapping from `elasticsearch/geo-shapes-world-countries-50m-mapping.json`:
+
+```
+PUT geo.shapes-world.countries-50m/_mapping
+<paste contents of geo-shapes-world-countries-50m-mapping.json → "mappings" object>
+```
+
+**Step 2 — Load the geo shapes data:**
+
+The data file is too large for Dev Tools. Use curl to bulk-load it:
+
+```bash
+# Elastic Cloud
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  "https://<ES_HOST>:443/geo.shapes-world.countries-50m/_bulk?pretty" \
+  -u "elastic:<password>" \
+  --data-binary @elasticsearch/geo-shapes-world-countries-50m-data.json
+
+# Local
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  "https://localhost:9200/geo.shapes-world.countries-50m/_bulk?pretty" \
+  -u "elastic:<password>" \
+  --data-binary @elasticsearch/geo-shapes-world-countries-50m-data.json
+```
+
+**Step 3 — Create and execute the enrich policy (Dev Tools):**
+
+```
+PUT _enrich/policy/opensky-geo-enrich-50m
+{
+  "geo_match": {
+    "indices": ["geo.shapes-world.countries-50m"],
+    "match_field": "geometry",
+    "enrich_fields": [
+      "CONTINENT", "REGION_UN", "REGION_WB", "SUBREGION",
+      "SOVEREIGNT", "ADMIN", "ADM0_A3", "NAME",
+      "BRK_A3", "ISO_A3", "NAME_LONG"
+    ]
+  }
+}
+```
+
+Then execute it to build the enrich index:
+
+```
+POST _enrich/policy/opensky-geo-enrich-50m/_execute
+```
+
+**Step 4 — Create the ingest pipeline (Dev Tools):**
+
+```
+PUT _ingest/pipeline/demo-aircraft-adsb.opensky
+{
+  "processors": [
+    {
+      "enrich": {
+        "ignore_failure": true,
+        "policy_name": "opensky-geo-enrich-50m",
+        "ignore_missing": true,
+        "field": "location",
+        "target_field": "geo"
+      }
+    },
+    {
+      "remove": {
+        "ignore_failure": true,
+        "ignore_missing": true,
+        "field": ["geo.geometry", "data_stream"]
+      }
+    },
+    {
+      "trim": {
+        "ignore_failure": true,
+        "ignore_missing": true,
+        "field": "callsign"
+      }
+    }
+  ]
+}
+```
+
+**Step 5 — Create the index template (Dev Tools):**
+
+```
+PUT _index_template/demos-aircraft-adsb
+{
+  "index_patterns": ["demos-aircraft-adsb*"],
+  "template": {
+    "settings": {
+      "index": {
+        "mode": "time_series",
+        "default_pipeline": "demo-aircraft-adsb.opensky",
+        "mapping": {
+          "source": {
+            "mode": "synthetic"
+          }
+        }
+      }
+    },
+    "mappings": {
+      "_source": {
+        "mode": "synthetic"
+      },
+      "dynamic_templates": [
+        {
+          "strings": {
+            "mapping": { "type": "keyword" },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "baro_altitude": { "type": "float" },
+        "callsign": {
+          "type": "keyword",
+          "eager_global_ordinals": true,
+          "null_value": "Not Assigned",
+          "index_options": "freqs"
+        },
+        "geo_altitude": { "type": "float" },
+        "icao24": { "type": "keyword", "time_series_dimension": true },
+        "last_contact": { "type": "date", "format": "epoch_second" },
+        "latitude": { "type": "float" },
+        "location": { "type": "geo_point" },
+        "longitude": { "type": "float" },
+        "on_ground": { "type": "boolean" },
+        "origin_country": { "type": "keyword" },
+        "position_source": { "type": "integer" },
+        "spi": { "type": "boolean" },
+        "squawk": { "type": "keyword" },
+        "time_position": { "type": "date", "format": "epoch_second" },
+        "true_track": { "type": "float" },
+        "velocity": { "type": "float" },
+        "vertical_rate": { "type": "float" }
+      }
+    },
+    "lifecycle": {
+      "enabled": true,
+      "data_retention": "730d"
+    }
+  },
+  "data_stream": {},
+  "composed_of": [],
+  "allow_auto_create": true
+}
+```
+
+### 4. Run
+
+```bash
+docker volume create logstash_data
+docker compose up -d
+```
+
+All four quadrant pipelines start automatically. Each polls OpenSky every 6 minutes and writes to the `demos-aircraft-adsb` data stream.
+
+### 5. Verify
+
+Check logs:
+
+```bash
+docker compose logs -f logstash
+```
+
+Confirm all pipelines are running:
+
+```bash
+docker compose exec logstash curl -s localhost:9600/_node/pipelines?pretty
+```
+
+You should see `adsb-q1` through `adsb-q4` in the response.
+
+## Stopping
+
+```bash
+docker compose down
+```
+
+## Project Structure
+
+```
+adsb/
+├── docker-compose.yml
+├── .env.example
+├── elasticsearch/
+│   ├── index-template.json                         # Index template for the data stream
+│   ├── index-settings-and-mappings.json            # Full index settings & mappings reference
+│   ├── ingest-pipeline.json                        # Ingest pipeline (enrich + trim)
+│   ├── enrich-policy.json                          # Enrich policy definition
+│   ├── geo-shapes-world-countries-50m-mapping.json # Source index mapping for enrich data
+│   └── geo-shapes-world-countries-50m-data.json    # Country boundary geo shapes (bulk data)
+└── logstash/
+    ├── config/
+    │   ├── logstash.yml        # Logstash node settings
+    │   └── pipelines.yml       # Registers all 4 quadrant pipelines
+    ├── pipeline/
+    │   ├── adsb_q1.conf        # Q1 — North-West
+    │   ├── adsb_q2.conf        # Q2 — North-East
+    │   ├── adsb_q3.conf        # Q3 — South-West
+    │   └── adsb_q4.conf        # Q4 — South-East
+    └── files/                  # Supplemental files (lookups, etc.)
+```
+
+## Optional: Centralized Pipeline Management
+
+Instead of managing pipeline `.conf` files on disk, you can use Kibana's Centralized Pipeline Management (CPM) to create, edit, and delete pipelines from the UI. Pipelines are stored in Elasticsearch and pulled by Logstash at the configured polling interval.
+
+### 1. Add management settings to `logstash.yml`
+
+For Elastic Cloud:
+
+```yaml
+xpack.management.enabled: true
+xpack.management.elasticsearch.cloud_id: "${ES_CLOUD_ID}"
+xpack.management.elasticsearch.cloud_auth: "${ES_CLOUD_AUTH}"
+xpack.management.pipeline.id: ["adsb-q1", "adsb-q2", "adsb-q3", "adsb-q4"]
+xpack.management.elasticsearch.pipeline.poll_interval: 5s
+```
+
+For a local cluster:
+
+```yaml
+xpack.management.enabled: true
+xpack.management.elasticsearch.hosts: ["${ES_HOSTS}"]
+xpack.management.elasticsearch.username: "${ES_USER}"
+xpack.management.elasticsearch.password: "${ES_PW}"
+xpack.management.pipeline.id: ["adsb-q1", "adsb-q2", "adsb-q3", "adsb-q4"]
+xpack.management.elasticsearch.pipeline.poll_interval: 5s
+```
+
+### 2. Create pipelines in Kibana
+
+1. Go to **Management > Ingest > Logstash Pipelines**.
+2. Create a pipeline for each ID (`adsb-q1` through `adsb-q4`) and paste the corresponding config.
+
+Once CPM is enabled, Logstash ignores local `.conf` files for managed pipeline IDs. You can run some pipelines locally and others centrally as long as their IDs don't overlap.
+
+### 3. Restart Logstash
+
+```bash
+docker compose restart logstash
+```
+
+## Changing Log Level at Runtime
+
+```bash
+curl -XPUT -u "${LS_API_USER}:${LS_API_PW}" \
+  'localhost:9600/_node/logging?pretty' \
+  -H 'Content-Type: application/json' \
+  -d '{"logger.logstash.outputs.elasticsearch":"DEBUG"}'
+```
+
+Reset to defaults:
+
+```bash
+curl -XPUT -u "${LS_API_USER}:${LS_API_PW}" \
+  'localhost:9600/_node/logging/reset?pretty'
+```

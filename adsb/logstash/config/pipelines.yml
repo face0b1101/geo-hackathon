@@ -1,0 +1,15 @@
+- pipeline.id: adsb-q1
+  path.config: "/usr/share/logstash/pipeline/adsb_q1.conf"
+  pipeline.workers: ${LS_PIPELINE_WORKERS}
+
+- pipeline.id: adsb-q2
+  path.config: "/usr/share/logstash/pipeline/adsb_q2.conf"
+  pipeline.workers: ${LS_PIPELINE_WORKERS}
+
+- pipeline.id: adsb-q3
+  path.config: "/usr/share/logstash/pipeline/adsb_q3.conf"
+  pipeline.workers: ${LS_PIPELINE_WORKERS}
+
+- pipeline.id: adsb-q4
+  path.config: "/usr/share/logstash/pipeline/adsb_q4.conf"
+  pipeline.workers: ${LS_PIPELINE_WORKERS}

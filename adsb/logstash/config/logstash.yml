@@ -1,0 +1,18 @@
+http.host: "0.0.0.0"
+
+node.name: logstash
+
+log.level: ${LS_LOG_LEVEL}
+
+pipeline.workers: ${LS_PIPELINE_WORKERS}
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+api.http.host: "0.0.0.0"
+api.http.port: 9600
+api.auth.type: basic
+api.auth.basic.username: "${LS_API_USER}"
+api.auth.basic.password: "${LS_API_PW}"
+
+monitoring.enabled: ${LS_MONITORING_ENABLED}
+monitoring.cluster_uuid: "${LS_MONITORING_CLUSTER_UUID}"
