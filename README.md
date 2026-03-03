@@ -11,13 +11,13 @@ Live aircraft position tracking powered by [OpenSky Network](https://opensky-net
 ```mermaid
 flowchart LR
     OSN["OpenSky Network API"]
-    LS["Logstash (4 pipelines)"]
+    LS["Logstash"]
     ES["Elasticsearch"]
     KB["Kibana"]
 
     OSN -->|"HTTP poll every 6 min"| LS
     LS -->|"enrich + index"| ES
-    ES --> KB
+    ES -->|"visualise"| KB
 ```
 
 Each pipeline covers one quadrant of the globe. Splitting the world into four smaller queries is intentional — a single global request requires significantly more memory and CPU than four parallel quadrant requests.
@@ -53,7 +53,7 @@ POST /_security/api_key
 
 From the response, copy the `id` and `api_key` values and join them with a colon:
 
-```
+```secret
 ES_API_KEY=<id>:<api_key>
 ```
 
