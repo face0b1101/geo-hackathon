@@ -12,7 +12,7 @@ else
   exit 1
 fi
 
-for var in ES_ENDPOINT ES_API_KEY KB_ENDPOINT; do
+for var in ES_ENDPOINT ES_API_KEY_ENCODED KB_ENDPOINT; do
   if [[ -z "${!var:-}" ]]; then
     echo "ERROR: $var is not set. Check your .env file." >&2
     exit 1
@@ -23,7 +23,6 @@ TOTAL=11
 STEP=0
 BASE="${ES_ENDPOINT%/}"
 KB_BASE="${KB_ENDPOINT%/}"
-API_KEY_ENCODED=$(printf '%s' "$ES_API_KEY" | base64 | tr -d '\n')
 
 run_curl() {
   local label="$1"; shift
@@ -34,7 +33,7 @@ run_curl() {
   tmpfile=$(mktemp)
   local http_code
   http_code=$(curl -s -w '%{http_code}' -o "$tmpfile" \
-    -H "Authorization: ApiKey $API_KEY_ENCODED" "$@")
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" "$@")
 
   if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
     echo "  FAILED (HTTP $http_code):" >&2

@@ -13,15 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Airport activity classification** — ingest pipeline script processor tags each airport-enriched document with `airport.activity`: `at_airport` (stationary), `taxiing` (moving on ground), `arriving` (descending), `departing` (climbing), or `overflight` (level flight through airspace)
 - **Makefile** with targets for common operations (`setup`, `up`, `down`, `logs`, `restart`, `status`, `clean`, `help`)
 - **Apache 2.0 licence** (`LICENSE`)
-- **API key generation instructions** in README with security warning for demo use
+- **API key generation instructions** in README with scoped role descriptor for least-privilege access
 - **Getting Started with Elasticsearch** section covering Elastic Cloud (Hosted/Serverless) and start-local
 - **Architecture diagram** (Mermaid) and pipeline architecture explanation in README
 - **OpenSky Network attribution** — data source section with citation and terms-of-use link
 
 ### Changed
 
-- **Auth migration** — replaced Cloud ID / basic auth with `ES_ENDPOINT` + `ES_API_KEY` across all configs (Logstash pipelines, docker-compose, setup.sh, .env.example)
-- **`.env.example` simplified** — 11 Elasticsearch/Kibana variables consolidated to 3 (`ES_ENDPOINT`, `ES_API_KEY`, `KB_ENDPOINT`)
+- **API key split** — replaced single `ES_API_KEY` with three variables (`ES_API_KEY_ID`, `ES_API_KEY`, `ES_API_KEY_ENCODED`) copied directly from the Create API Key response; eliminates user-side base64 encoding and improves setup UX
+- **Scoped API key** — README now documents a least-privilege role descriptor instead of a superuser key
+- **Auth migration** — replaced Cloud ID / basic auth with `ES_ENDPOINT` + API key across all configs (Logstash pipelines, docker-compose, setup.sh, .env.example)
+- **`.env.example` simplified** — Elasticsearch/Kibana variables consolidated to `ES_ENDPOINT`, `ES_API_KEY_ID`, `ES_API_KEY`, `ES_API_KEY_ENCODED`, `KB_ENDPOINT`
 - **`setup.sh`** migrated from basic auth (`-u user:pass`) to API key auth (`Authorization: ApiKey` header)
 - **Logstash pipeline outputs** switched from `cloud_id`/`cloud_auth` to `hosts`/`api_key`
 - **Centralised Pipeline Management** section updated with API key config and link to official docs

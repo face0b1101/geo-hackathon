@@ -47,19 +47,48 @@ Open Kibana **Dev Tools** (or use curl) and run:
 ```dev-tools
 POST /_security/api_key
 {
-  "name": "adsb-demo"
+  "name": "adsb-demo",
+  "role_descriptors": {
+    "setup_and_ingest": {
+      "cluster": [
+        "manage_enrich",
+        "manage_ingest_pipelines",
+        "manage_index_templates"
+      ],
+      "indices": [
+        {
+          "names": [
+            "geo.shapes-world.countries-50m",
+            "adsb-airports-geo"
+          ],
+          "privileges": ["create_index", "index", "write"]
+        },
+        {
+          "names": ["demos-aircraft-adsb*"],
+          "privileges": ["auto_configure", "create_doc", "create_index"]
+        }
+      ],
+      "applications": [
+        {
+          "application": "kibana-.kibana",
+          "privileges": ["feature_savedObjectsManagement.all"],
+          "resources": ["*"]
+        }
+      ]
+    }
+  }
 }
 ```
 
-From the response, copy the `id` and `api_key` values and join them with a colon:
+From the response, copy the three values into your `.env` file:
 
-```secret
-ES_API_KEY=<id>:<api_key>
+```sh
+ES_API_KEY_ID=VuaCfGcBCdbkQm-e5aOx
+ES_API_KEY=ui2lp2axTNmsyakw9tvNnw
+ES_API_KEY_ENCODED=VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeWFrdzl0dk5udw==
 ```
 
-This is the format that the [Logstash elasticsearch output plugin](https://www.elastic.co/docs/reference/logstash/plugins/plugins-outputs-elasticsearch#plugins-outputs-elasticsearch-api_key) expects.
-
-> **Warning** - When created by the `elastic` superuser, this key inherits full cluster privileges. This is fine for a demo but **not a production best practice**. In production, use [scoped role descriptors](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-create-api-key) to follow the principle of least privilege.
+`setup.sh` uses the base64-encoded key for REST calls; Logstash uses the `id:secret` pair directly.
 
 ## Quick Start
 
@@ -79,7 +108,9 @@ Edit `.env` and fill in your credentials:
 
 ```sh
 ES_ENDPOINT=https://my-deployment.es.us-central1.gcp.cloud.es.io
-ES_API_KEY=VuaCfGcBCdbkQm-e5aOx:ui2lp2axTNmsyakw9tvNnw
+ES_API_KEY_ID=VuaCfGcBCdbkQm-e5aOx
+ES_API_KEY=ui2lp2axTNmsyakw9tvNnw
+ES_API_KEY_ENCODED=VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeWFrdzl0dk5udw==
 KB_ENDPOINT=https://my-deployment.kb.us-central1.gcp.cloud.es.io
 
 OPENSKY_API_USER=your_opensky_username
@@ -88,7 +119,7 @@ OPENSKY_API_PW=your_opensky_password
 
 ### 3. Set up Elasticsearch
 
-Run the setup script to create the geo-shapes and airports indices, enrich policies, ingest pipeline, index template, and import Kibana saved objects (dashboards, data views). The script reads `ES_ENDPOINT`, `ES_API_KEY`, and `KB_ENDPOINT` from your `.env` file.
+Run the setup script to create the geo-shapes and airports indices, enrich policies, ingest pipeline, index template, and import Kibana saved objects (dashboards, data views). The script reads `ES_ENDPOINT`, `ES_API_KEY_ENCODED`, and `KB_ENDPOINT` from your `.env` file.
 
 ```bash
 ./setup.sh
@@ -161,7 +192,7 @@ Instead of managing pipeline `.conf` files on disk, you can use Kibana's [Centra
 ```yaml
 xpack.management.enabled: true
 xpack.management.elasticsearch.hosts: ["${ES_ENDPOINT}"]
-xpack.management.elasticsearch.api_key: "${ES_API_KEY}"
+xpack.management.elasticsearch.api_key: "${ES_API_KEY_ID}:${ES_API_KEY}"
 xpack.management.pipeline.id: ["adsb-q1", "adsb-q2", "adsb-q3", "adsb-q4"]
 xpack.management.elasticsearch.pipeline.poll_interval: 5s
 ```
