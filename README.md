@@ -2,7 +2,7 @@
 
 Live aircraft position tracking powered by [OpenSky Network](https://opensky-network.org) and the Elastic Stack. Logstash pipelines poll the OpenSky REST API for real-time ADS-B transponder data, enrich each position with country/region geo-shapes, and index everything into an Elasticsearch data stream for visualisation in Kibana.
 
-> **Data source** — All flight data is provided by [The OpenSky Network](https://opensky-network.org), a community-based receiver network that collects air traffic surveillance data and makes it freely available for research and non-commercial purposes. No data is bundled in this repository; it is fetched live from the OpenSky API at runtime.
+> **Data source** - All flight data is provided by [The OpenSky Network](https://opensky-network.org), a community-based receiver network that collects air traffic surveillance data and makes it freely available for research and non-commercial purposes. No data is bundled in this repository; it is fetched live from the OpenSky API at runtime.
 >
 > If you use this project, please review the [OpenSky Network terms of use](https://opensky-network.org/about/terms-of-use).
 
@@ -20,7 +20,7 @@ flowchart LR
     ES -->|"visualise"| KB
 ```
 
-Each pipeline covers one quadrant of the globe. Splitting the world into four smaller queries is intentional — a single global request requires significantly more memory and CPU than four parallel quadrant requests.
+Each pipeline covers one quadrant of the globe. Splitting the world into four smaller queries is intentional - a single global request requires significantly more memory and CPU than four parallel quadrant requests.
 
 | Pipeline  | Coverage                    | Bounding box                |
 | --------- | --------------------------- | --------------------------- |
@@ -35,10 +35,10 @@ All four pipelines write to the same `demos-aircraft-adsb` data stream. An inges
 
 You need a running Elasticsearch and Kibana instance to receive the data. Two options:
 
-- **Elastic Cloud** ([elastic.co/cloud](https://elastic.co/cloud)) — managed Elasticsearch and Kibana (Hosted or Serverless). Your Elasticsearch and Kibana endpoint URLs are shown on the deployment overview page.
-- **Start Local** ([elastic/start-local](https://github.com/elastic/start-local)) — run `curl -fsSL https://elastic.co/start-local | sh` to spin up Elasticsearch and Kibana locally via Docker. Your endpoints are shown at the end of the install and saved in `elastic-start-local/.env`.
+- **Elastic Cloud** ([elastic.co/cloud](https://elastic.co/cloud)) - managed Elasticsearch and Kibana (Hosted or Serverless). Your Elasticsearch and Kibana endpoint URLs are shown on the deployment overview page.
+- **Start Local** ([elastic/start-local](https://github.com/elastic/start-local)) - run `curl -fsSL https://elastic.co/start-local | sh` to spin up Elasticsearch and Kibana locally via Docker. Your endpoints are shown at the end of the install and saved in `elastic-start-local/.env`.
 
-Both approaches give you an **Elasticsearch endpoint URL** and a **Kibana endpoint URL**. You will also need an API key — see below.
+Both approaches give you an **Elasticsearch endpoint URL** and a **Kibana endpoint URL**. You will also need an API key - see below.
 
 ## Generate an API Key
 
@@ -59,7 +59,7 @@ ES_API_KEY=<id>:<api_key>
 
 This is the format that the [Logstash elasticsearch output plugin](https://www.elastic.co/docs/reference/logstash/plugins/plugins-outputs-elasticsearch#plugins-outputs-elasticsearch-api_key) expects.
 
-> **Warning** — When created by the `elastic` superuser, this key inherits full cluster privileges. This is fine for a demo but **not a production best practice**. In production, use [scoped role descriptors](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-create-api-key) to follow the principle of least privilege.
+> **Warning** - When created by the `elastic` superuser, this key inherits full cluster privileges. This is fine for a demo but **not a production best practice**. In production, use [scoped role descriptors](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-create-api-key) to follow the principle of least privilege.
 
 ## Quick Start
 
@@ -146,10 +146,10 @@ docker compose down
     │   ├── logstash.yml                              # Logstash node settings
     │   └── pipelines.yml                             # Registers all 4 quadrant pipelines
     └── pipeline/
-        ├── adsb_q1.conf                              # Q1 — North-West
-        ├── adsb_q2.conf                              # Q2 — North-East
-        ├── adsb_q3.conf                              # Q3 — South-West
-        └── adsb_q4.conf                              # Q4 — South-East
+        ├── adsb_q1.conf                              # Q1 - North-West
+        ├── adsb_q2.conf                              # Q2 - North-East
+        ├── adsb_q3.conf                              # Q3 - South-West
+        └── adsb_q4.conf                              # Q4 - South-East
 ```
 
 ## Optional: Centralised Pipeline Management
