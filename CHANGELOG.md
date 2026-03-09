@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-03-09
+
+First stable release. Complete ADS-B flight tracking pipeline with real-time
+data ingestion, geo-enrichment, AI agents, automated daily briefings, and
+Kibana dashboards.
+
+### Changed
+
+- **Kibana saved objects** — re-exported to pick up latest dashboard tweaks
+
 ## [0.3.0] - 2026-03-09
 
 ### Added
@@ -96,4 +106,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.0]: https://github.com/face0b1101/adsb-demo/releases/tag/v0.1.0
 [0.2.0]: https://github.com/face0b1101/adsb-demo/compare/v0.1.0...v0.2.0
 [0.3.0]: https://github.com/face0b1101/adsb-demo/compare/v0.2.0...v0.3.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v0.3.0...HEAD
+[1.0.0]: https://github.com/face0b1101/adsb-demo/compare/v0.3.0...v1.0.0
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.0.0...HEAD
