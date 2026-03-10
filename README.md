@@ -73,12 +73,12 @@ A dedicated **ADS-B Daily Briefing Analyst** agent is also deployed. You can ask
 
 You need a running Elasticsearch cluster and Kibana instance to receive the data. Three options are supported:
 
-| Option | Cases | Alert-triggered workflows | Notes |
-| --- | :---: | :---: | --- |
-| **Elastic Cloud Hosted** ([elastic.co/cloud](https://elastic.co/cloud)) | Yes | Yes | Full-featured managed deployment. Recommended for the full demo experience. |
-| **Observability Serverless** ([elastic.co/cloud](https://elastic.co/cloud)) | Yes | Yes | Serverless project with Cases and alerting. Choose this if you want serverless. |
-| **start-local** ([elastic/start-local](https://github.com/elastic/start-local)) | Yes | Yes | Local Docker deployment. Run `curl -fsSL https://elastic.co/start-local \| sh`. |
-| Elasticsearch Serverless | No | No | Core ingestion and dashboards work, but Cases and alert-triggered workflows are unavailable. |
+| Option                                                                          | Cases | Alert-triggered workflows | Notes                                                                                        |
+| ------------------------------------------------------------------------------- | :---: | :-----------------------: | -------------------------------------------------------------------------------------------- |
+| **Elastic Cloud Hosted** ([elastic.co/cloud](https://elastic.co/cloud))         |  Yes  |            Yes            | Full-featured managed deployment. Recommended for the full demo experience.                  |
+| **Observability Serverless** ([elastic.co/cloud](https://elastic.co/cloud))     |  Yes  |            Yes            | Serverless project with Cases and alerting. Choose this if you want serverless.              |
+| **start-local** ([elastic/start-local](https://github.com/elastic/start-local)) |  Yes  |            Yes            | Local Docker deployment. Run `curl -fsSL https://elastic.co/start-local \| sh`.              |
+| Elasticsearch Serverless                                                        |  No   |            No             | Core ingestion and dashboards work, but Cases and alert-triggered workflows are unavailable. |
 
 > **Note** — The hijack investigation workflow uses Kibana Cases to record investigation outcomes. On deployments without Cases support the workflow still runs but skips case creation gracefully (`on-failure: continue`). All other features — ingestion, dashboards, AI agents, the daily briefing — work on every deployment type.
 
@@ -216,19 +216,19 @@ Run `make help` to see all available targets. Every target is a thin wrapper aro
 
 ### Setup / Deploy
 
-| Command | Description |
-| --- | --- |
-| `make setup` | Run full Elasticsearch setup (skip existing) |
-| `make deploy-ilm` | Deploy ES ILM policy (skipped on Serverless) |
-| `make deploy-indices` | Deploy ES index templates and data streams |
-| `make deploy-enrich` | Deploy ES enrich policies |
-| `make deploy-pipelines` | Deploy ES ingest pipelines |
-| `make deploy-kibana` | Deploy Kibana saved objects (dashboards, data views) |
-| `make deploy-workflows` | Deploy Kibana workflows |
-| `make deploy-agents` | Deploy Kibana AI agents |
-| `make deploy-es` | Deploy all ES resources (ilm + indices + enrich + pipelines) |
-| `make deploy-ai` | Deploy AI layer (workflows + agents) |
-| `make redeploy` | Re-deploy all resources with `--force` |
+| Command                 | Description                                                  |
+| ----------------------- | ------------------------------------------------------------ |
+| `make setup`            | Run full Elasticsearch setup (skip existing)                 |
+| `make deploy-ilm`       | Deploy ES ILM policy (skipped on Serverless)                 |
+| `make deploy-indices`   | Deploy ES index templates and data streams                   |
+| `make deploy-enrich`    | Deploy ES enrich policies                                    |
+| `make deploy-pipelines` | Deploy ES ingest pipelines                                   |
+| `make deploy-kibana`    | Deploy Kibana saved objects (dashboards, data views)         |
+| `make deploy-workflows` | Deploy Kibana workflows                                      |
+| `make deploy-agents`    | Deploy Kibana AI agents                                      |
+| `make deploy-es`        | Deploy all ES resources (ilm + indices + enrich + pipelines) |
+| `make deploy-ai`        | Deploy AI layer (workflows + agents)                         |
+| `make redeploy`         | Re-deploy all resources with `--force`                       |
 
 Any deploy target accepts `FORCE=1` to overwrite existing resources:
 
@@ -239,23 +239,23 @@ make setup FORCE=1
 
 ### Logstash
 
-| Command | Description |
-| --- | --- |
-| `make up` | Start Logstash |
-| `make down` | Stop Logstash |
-| `make logs` | Tail Logstash logs |
+| Command        | Description                           |
+| -------------- | ------------------------------------- |
+| `make up`      | Start Logstash                        |
+| `make down`    | Stop Logstash                         |
+| `make logs`    | Tail Logstash logs                    |
 | `make restart` | Restart Logstash after config changes |
-| `make status` | Show Logstash pipeline status |
-| `make clean` | Stop Logstash and remove volumes |
+| `make status`  | Show Logstash pipeline status         |
+| `make clean`   | Stop Logstash and remove volumes      |
 
 ### Diagnostics
 
-| Command | Description |
-| --- | --- |
-| `make validate` | Validate Docker Compose config |
-| `make health` | Check Elasticsearch cluster health |
-| `make ps` | Show running containers |
-| `make shell` | Open a shell inside the Logstash container |
+| Command         | Description                                |
+| --------------- | ------------------------------------------ |
+| `make validate` | Validate Docker Compose config             |
+| `make health`   | Check Elasticsearch cluster health         |
+| `make ps`       | Show running containers                    |
+| `make shell`    | Open a shell inside the Logstash container |
 
 ## Project Structure
 
@@ -347,6 +347,6 @@ Flight tracking data is provided by [The OpenSky Network](https://opensky-networ
 
 > Matthias Schäfer, Martin Strohmeier, Vincent Lenders, Ivan Martinovic and Matthias Wilhelm.
 > "Bringing Up OpenSky: A Large-scale ADS-B Sensor Network for Research".
-> In *Proceedings of the 13th IEEE/ACM International Symposium on Information Processing in Sensor Networks (IPSN)*, pages 83-94, April 2014.
+> In _Proceedings of the 13th IEEE/ACM International Symposium on Information Processing in Sensor Networks (IPSN)_, pages 83-94, April 2014.
 
 This project is not affiliated with or endorsed by the OpenSky Network. Please review the [OpenSky Network terms of use](https://opensky-network.org/about/terms-of-use) before operating this demo.
