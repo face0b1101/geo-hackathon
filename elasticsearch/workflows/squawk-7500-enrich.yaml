@@ -66,6 +66,8 @@ steps:
 
   # ------------------------------------------------------------------
   # 3. adsbdb — aircraft metadata + expected route
+  #    Combined call returns both when the callsign is known; falls back
+  #    to ICAO24-only lookup when the callsign is unrecognised.
   # ------------------------------------------------------------------
   - name: adsbdb_lookup
     type: http
@@ -73,6 +75,14 @@ steps:
       url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}?callsign={{ inputs.callsign }}"
       method: GET
     on-failure:
+      fallback:
+        - name: adsbdb_fallback
+          type: http
+          with:
+            url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}"
+            method: GET
+          on-failure:
+            continue: true
       continue: true
 
   # ------------------------------------------------------------------

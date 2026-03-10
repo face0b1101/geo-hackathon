@@ -201,7 +201,7 @@ steps:
 
         {{ steps.generate_briefing.output }}
 
-        :bar_chart: <__KB_ENDPOINT__/app/dashboards#/view/06362a65-7aa3-5854-aea9-46954b3140fc?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h,to:now))|Open Dashboard>
+        :bar_chart: <__KB_ENDPOINT__/app/dashboards#/view/611bbe7b-d277-4684-9974-63cdd2b33d08?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h,to:now))|Open Dashboard>
 
     on-failure:
       continue: true

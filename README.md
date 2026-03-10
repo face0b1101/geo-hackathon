@@ -95,7 +95,8 @@ POST /_security/api_key
   "role_descriptors": {
     "adsb_setup": {
       "cluster": [
-        "manage"
+        "manage",
+        "manage_security"
       ],
       "indices": [
         {
@@ -119,7 +120,7 @@ POST /_security/api_key
 }
 ```
 
-> **Kibana privileges** — The `all` application privilege is equivalent to the `kibana_admin` built-in role. It grants full access to all Kibana features across all spaces, including space management, saved objects, AI agents, workflows, connectors, alerting rules, cases, and advanced settings. This works identically on Cloud Hosted, Observability Serverless, and start-local — each deployment exposes only the features it supports.
+> **Privileges** — `manage_security` is required for the automated [service user](#service-user-automated) that ensures correct attribution of workflow actions in Kibana Cases. The `all` application privilege is equivalent to the `kibana_admin` built-in role — it grants full access to all Kibana features across all spaces, including space management, saved objects, AI agents, workflows, connectors, alerting rules, cases, and advanced settings. This works identically on Cloud Hosted, Observability Serverless, and start-local — each deployment exposes only the features it supports. If your existing API key lacks `manage_security`, `setup.sh` falls back gracefully — the service user step is skipped and actions are attributed to the API key owner.
 
 From the response, copy the three values into your `.env` file:
 

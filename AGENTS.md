@@ -12,31 +12,32 @@ ______________________________________________________________________
 - **Visualisation**: Kibana (dashboards, data views)
 - **Setup automation**: Bash (`setup.sh`)
 
-| Command                    | Purpose                                                                  |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `cp .env.example .env`     | Create local environment config                                          |
-| `make setup`               | Create ES indices, enrich policy, ingest pipeline, import Kibana objects |
-| `make deploy-ilm`          | Deploy ES ILM policy only (skipped on Serverless)                        |
-| `make deploy-indices`      | Deploy ES index templates and data streams only                          |
-| `make deploy-enrich`       | Deploy ES enrich policies only                                           |
-| `make deploy-pipelines`    | Deploy ES ingest pipelines only                                          |
-| `make deploy-kibana`       | Deploy Kibana saved objects (dashboards, data views) only                |
-| `make deploy-workflows`    | Deploy Kibana workflows only                                             |
-| `make deploy-agents`       | Deploy Kibana AI agents only                                             |
-| `make deploy-es`           | Deploy all ES resources (ilm + indices + enrich + pipelines)             |
-| `make deploy-ai`           | Deploy AI layer (workflows + agents)                                     |
-| `make redeploy`            | Re-deploy all resources (force overwrite)                                |
-| `make up`                  | Start Logstash (all 4 pipelines)                                         |
-| `make down`                | Stop Logstash                                                            |
-| `make logs`                | Tail Logstash logs                                                       |
-| `make restart`             | Restart Logstash after config changes                                    |
-| `make status`              | Show Logstash pipeline status                                            |
-| `make clean`               | Stop Logstash and remove volumes                                         |
-| `make validate`            | Validate Docker Compose config                                           |
-| `make health`              | Check Elasticsearch cluster health                                       |
-| `make ps`                  | Show running containers                                                  |
-| `make shell`               | Open a shell inside the Logstash container                               |
-| `make help`                | List all available targets (grouped)                                     |
+| Command                          | Purpose                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `cp .env.example .env`           | Create local environment config                                          |
+| `make setup`                     | Create ES indices, enrich policy, ingest pipeline, import Kibana objects |
+| `make setup-no-service-user`     | Run full setup without service user (actions attributed to .env API key) |
+| `make deploy-ilm`                | Deploy ES ILM policy only (skipped on Serverless)                        |
+| `make deploy-indices`            | Deploy ES index templates and data streams only                          |
+| `make deploy-enrich`             | Deploy ES enrich policies only                                           |
+| `make deploy-pipelines`          | Deploy ES ingest pipelines only                                          |
+| `make deploy-kibana`             | Deploy Kibana saved objects (dashboards, data views) only                |
+| `make deploy-workflows`          | Deploy Kibana workflows only                                             |
+| `make deploy-agents`             | Deploy Kibana AI agents only                                             |
+| `make deploy-es`                 | Deploy all ES resources (ilm + indices + enrich + pipelines)             |
+| `make deploy-ai`                 | Deploy AI layer (workflows + agents)                                     |
+| `make redeploy`                  | Re-deploy all resources (force overwrite)                                |
+| `make up`                        | Start Logstash (all 4 pipelines)                                         |
+| `make down`                      | Stop Logstash                                                            |
+| `make logs`                      | Tail Logstash logs                                                       |
+| `make restart`                   | Restart Logstash after config changes                                    |
+| `make status`                    | Show Logstash pipeline status                                            |
+| `make clean`                     | Stop Logstash and remove volumes                                         |
+| `make validate`                  | Validate Docker Compose config                                           |
+| `make health`                    | Check Elasticsearch cluster health                                       |
+| `make ps`                        | Show running containers                                                  |
+| `make shell`                     | Open a shell inside the Logstash container                               |
+| `make help`                      | List all available targets (grouped)                                     |
 
 Any deploy target accepts `FORCE=1` to overwrite existing resources, e.g. `make deploy-agents FORCE=1`.
 

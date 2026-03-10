@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-10
+
+### Added
+
+- **Service user automation** — `setup.sh` creates a dedicated `adsb-automation` user, role, and session API key so all deployed resources (alert rules, workflows, agents) are attributed to a service identity rather than the human operator; gracefully skips when the API key lacks `manage_security` or the deployment does not support native roles
+- **`--no-service-user` flag** for `setup.sh` — opt out of service user creation and run everything under the original `.env` API key
+- **`make setup-no-service-user` target** — convenience Make target for running full setup without the service user
+- **adsbdb callsign fallback** — `squawk-7500-enrich.yaml` and `squawk-7500-hijack-investigation.yaml` now fall back to an ICAO24-only adsbdb lookup when the combined callsign+ICAO24 request fails (e.g. unrecognised callsign)
+
+### Changed
+
+- **API key role descriptor** updated in README and `.env.example` — now includes `manage_security` cluster privilege for service user creation; existing keys without this privilege continue to work (service user step is skipped)
+- **Dashboard link corrected** in `daily-flight-briefing.yaml` — Slack message "Open Dashboard" button now points to the correct saved-object ID
+- **Kibana saved objects** re-exported to pick up latest dashboard changes
+- **AGENTS.md** — added `make setup-no-service-user` to Make targets table, reformatted table column widths
+
 ## [1.2.1] - 2026-03-10
 
 ### Changed
@@ -175,4 +191,5 @@ Kibana dashboards.
 [1.1.0]: https://github.com/face0b1101/adsb-demo/compare/v1.0.0...v1.1.0
 [1.2.0]: https://github.com/face0b1101/adsb-demo/compare/v1.1.0...v1.2.0
 [1.2.1]: https://github.com/face0b1101/adsb-demo/compare/v1.2.0...v1.2.1
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.2.1...HEAD
+[1.3.0]: https://github.com/face0b1101/adsb-demo/compare/v1.2.1...v1.3.0
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.3.0...HEAD

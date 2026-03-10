@@ -9,8 +9,9 @@ cd "$SCRIPT_DIR"
 # ---------------------------------------------------------------------------
 
 FORCE=false
+SKIP_SERVICE_USER=false
 SELECTED_GROUPS=""
-ALL_GROUPS="space ilm indices enrich pipelines kibana workflows agents"
+ALL_GROUPS="serviceuser space ilm indices enrich pipelines kibana workflows agents"
 
 usage() {
   cat <<EOF
@@ -18,6 +19,11 @@ Usage: ./setup.sh [OPTIONS]
 
 Set up Elasticsearch indices, enrich policies, pipelines, Kibana objects,
 AI agents, and workflows for the ADS-B demo.
+
+By default, the script creates a dedicated 'adsb-automation' service user
+and mints an API key owned by that user, so all deployed resources (alert
+rules, workflows, agents) are attributed to the service identity rather
+than the human operator. Use --no-service-user to skip this.
 
 If KB_SPACE is set in .env, the Kibana space is created automatically with
 the Observability solution view, and all Kibana resources are deployed
@@ -27,6 +33,8 @@ Options:
   --only GROUP[,GROUP]  Run only the specified groups (comma-separated).
                         Available groups: ${ALL_GROUPS}
   --force               Overwrite existing resources instead of skipping them.
+  --no-service-user     Skip service user creation; run everything under the
+                        original API key from .env.
   --help                Show this help message.
 
 Examples:
@@ -34,6 +42,7 @@ Examples:
   ./setup.sh --only agents,workflows Re-deploy agents and workflows only
   ./setup.sh --only kibana --force   Reset dashboards to source-controlled versions
   ./setup.sh --force                 Overwrite everything
+  ./setup.sh --no-service-user       Run all groups without service user
 EOF
   exit 0
 }
@@ -42,6 +51,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --force) FORCE=true; shift ;;
     --only)  SELECTED_GROUPS="$2"; shift 2 ;;
+    --no-service-user) SKIP_SERVICE_USER=true; shift ;;
     --help)  usage ;;
     *) echo "Unknown option: $1" >&2; usage ;;
   esac
@@ -57,6 +67,16 @@ else
       exit 1
     fi
   done
+fi
+
+if [[ "$SKIP_SERVICE_USER" == "true" ]]; then
+  _filtered_groups=""
+  for _g in $SELECTED_GROUPS; do
+    [[ "$_g" == "serviceuser" ]] && continue
+    _filtered_groups="${_filtered_groups:+$_filtered_groups }$_g"
+  done
+  SELECTED_GROUPS="$_filtered_groups"
+  unset _filtered_groups _g
 fi
 
 group_enabled() { echo "$SELECTED_GROUPS" | grep -qw "$1"; }
@@ -96,6 +116,7 @@ fi
 # ---------------------------------------------------------------------------
 
 declare -A GROUP_STEPS=(
+  [serviceuser]=1
   [space]=1
   [ilm]=1
   [indices]=6
@@ -185,6 +206,119 @@ index_doc_count() {
   local body
   body=$(parse_response "$resp")
   echo "$body" | jq -r '.count // -1' 2>/dev/null || echo "-1"
+}
+
+# ---------------------------------------------------------------------------
+# Group: serviceuser
+# ---------------------------------------------------------------------------
+
+setup_serviceuser() {
+  step_label "Creating service user 'adsb-automation'"
+
+  local svc_user="adsb-automation"
+  local svc_role="adsb-automation"
+  local svc_pass
+  svc_pass="$(openssl rand -base64 32)"
+
+  local role_payload='{
+    "cluster": ["manage", "manage_security"],
+    "indices": [
+      {
+        "names": ["geo.shapes-world.countries-50m", "adsb-airports-geo", "demos-aircraft-adsb*"],
+        "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
+      }
+    ],
+    "applications": [
+      {
+        "application": "kibana-.kibana",
+        "privileges": ["all"],
+        "resources": ["*"]
+      }
+    ]
+  }'
+
+  # Create role
+  local role_tmp role_http
+  role_tmp=$(mktemp)
+  role_http=$(curl -s -w '%{http_code}' -o "$role_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X PUT "$BASE/_security/role/$svc_role" \
+    -H "Content-Type: application/json" \
+    -d "$role_payload")
+
+  if [[ "$role_http" == "400" || "$role_http" == "404" ]]; then
+    echo "  Skipped — native roles not supported on this deployment (HTTP $role_http)"
+    echo "  Workflow actions will be attributed to the .env API key owner"
+    rm -f "$role_tmp"
+    return 0
+  elif [[ "$role_http" == "403" ]]; then
+    echo "  Skipped — API key lacks manage_security privilege (HTTP 403)"
+    echo "  Regenerate the API key with manage_security to enable service user creation."
+    echo "  See README.md 'Generate an API Key' for the updated role descriptor."
+    echo "  Continuing with the original API key."
+    rm -f "$role_tmp"
+    return 0
+  elif [[ "$role_http" -lt 200 || "$role_http" -ge 300 ]]; then
+    echo "  WARNING (HTTP $role_http): Could not create service role." >&2
+    cat "$role_tmp" >&2
+    echo "  Continuing with the original API key." >&2
+    rm -f "$role_tmp"
+    return 0
+  fi
+  rm -f "$role_tmp"
+
+  # Create user with the role
+  local user_tmp user_http
+  user_tmp=$(mktemp)
+  user_http=$(curl -s -w '%{http_code}' -o "$user_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X PUT "$BASE/_security/user/$svc_user" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg pw "$svc_pass" --arg role "$svc_role" '{
+      password: $pw,
+      full_name: "ADS-B Automation",
+      email: "adsb-automation@noreply.local",
+      roles: [$role]
+    }')")
+
+  if [[ "$user_http" -lt 200 || "$user_http" -ge 300 ]]; then
+    echo "  WARNING (HTTP $user_http): Could not create service user." >&2
+    cat "$user_tmp" >&2
+    echo "  Continuing with the original API key." >&2
+    rm -f "$user_tmp"
+    return 0
+  fi
+  rm -f "$user_tmp"
+
+  # Mint API key as the service user (inherits role privileges)
+  local key_tmp key_http
+  key_tmp=$(mktemp)
+  key_http=$(curl -s -w '%{http_code}' -o "$key_tmp" \
+    -u "${svc_user}:${svc_pass}" \
+    -X POST "$BASE/_security/api_key" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "adsb-automation-session", "expiration": "7d"}')
+
+  if [[ "$key_http" -lt 200 || "$key_http" -ge 300 ]]; then
+    echo "  WARNING (HTTP $key_http): Could not mint API key for service user." >&2
+    cat "$key_tmp" >&2
+    echo "  Continuing with the original API key." >&2
+    rm -f "$key_tmp"
+    return 0
+  fi
+
+  local new_encoded
+  new_encoded=$(jq -r '.encoded // empty' < "$key_tmp" 2>/dev/null)
+  rm -f "$key_tmp"
+
+  if [[ -z "$new_encoded" ]]; then
+    echo "  WARNING: API key response missing 'encoded' field." >&2
+    echo "  Continuing with the original API key." >&2
+    return 0
+  fi
+
+  ES_API_KEY_ENCODED="$new_encoded"
+  echo "  Using service user 'adsb-automation' for all subsequent operations"
 }
 
 # ---------------------------------------------------------------------------
@@ -1356,6 +1490,7 @@ echo "Groups: $SELECTED_GROUPS"
 [[ -n "${KB_SPACE:-}" ]] && echo "Space: $KB_SPACE"
 echo ""
 
+group_enabled "serviceuser" && setup_serviceuser
 group_enabled "space"     && setup_space
 group_enabled "ilm"       && setup_ilm
 group_enabled "indices"   && setup_indices
