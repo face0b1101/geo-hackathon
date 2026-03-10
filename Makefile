@@ -1,6 +1,6 @@
 FORCE_FLAG := $(if $(FORCE),--force,)
 
-.PHONY: setup deploy-indices deploy-enrich deploy-pipelines deploy-kibana \
+.PHONY: setup deploy-ilm deploy-indices deploy-enrich deploy-pipelines deploy-kibana \
         deploy-workflows deploy-agents deploy-es deploy-ai redeploy \
         up down logs restart status clean \
         validate health ps shell help
@@ -11,6 +11,9 @@ FORCE_FLAG := $(if $(FORCE),--force,)
 
 setup:              ## Run full Elasticsearch setup (skip existing)
 	./setup.sh $(FORCE_FLAG)
+
+deploy-ilm:         ## Deploy ES ILM policy (skipped on Serverless)
+	./setup.sh --only ilm $(FORCE_FLAG)
 
 deploy-indices:     ## Deploy ES index templates and data streams
 	./setup.sh --only indices $(FORCE_FLAG)
@@ -30,8 +33,8 @@ deploy-workflows:   ## Deploy Kibana workflows
 deploy-agents:      ## Deploy Kibana AI agents
 	./setup.sh --only agents $(FORCE_FLAG)
 
-deploy-es:          ## Deploy all ES resources (indices + enrich + pipelines)
-	./setup.sh --only indices,enrich,pipelines $(FORCE_FLAG)
+deploy-es:          ## Deploy all ES resources (ilm + indices + enrich + pipelines)
+	./setup.sh --only ilm,indices,enrich,pipelines $(FORCE_FLAG)
 
 deploy-ai:          ## Deploy AI layer (workflows + agents)
 	./setup.sh --only workflows,agents $(FORCE_FLAG)

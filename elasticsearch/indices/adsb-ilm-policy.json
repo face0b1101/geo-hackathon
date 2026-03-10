@@ -1,0 +1,28 @@
+{
+  "policy": {
+    "phases": {
+      "hot": {
+        "actions": {
+          "rollover": {
+            "max_primary_shard_size": "40gb",
+            "max_age": "14d"
+          }
+        }
+      },
+      "frozen": {
+        "min_age": "14d",
+        "actions": {
+          "searchable_snapshot": {
+            "snapshot_repository": "found-snapshots"
+          }
+        }
+      },
+      "delete": {
+        "min_age": "730d",
+        "actions": {
+          "delete": {}
+        }
+      }
+    }
+  }
+}

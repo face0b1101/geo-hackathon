@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-10
+
+### Added
+
+- **Kibana Spaces support** — new `KB_SPACE` environment variable deploys all Kibana resources (dashboards, agents, workflows) into a dedicated space; `setup.sh` creates the space automatically with the Observability solution view and custom icon (`data/adsb-space-icon-64.png`)
+- **ILM policy** (`elasticsearch/indices/adsb-ilm-policy.json`) — `adsb-lifecycle` policy with hot (rollover at 40 GB / 14 d), frozen (searchable snapshot at 14 d), and delete (730 d) phases; index template references it; `setup.sh` deploys it and gracefully skips on Serverless
+- **`deploy-ilm` Make target** — deploys the ILM policy independently (`make deploy-ilm`)
+- **Migration import pipeline** (`logstash/pipeline/migrate-import.conf`) — Logstash pipeline for importing NDJSON files exported by logstash-es-export into the `demos-aircraft-adsb` data stream
+- **`SLACK_CONNECTOR_ID`** environment variable — configurable Slack connector UUID substituted into workflow YAML at deploy time
+- **Deployment comparison table** in README — Cloud Hosted, Observability Serverless, start-local, and Elasticsearch Serverless with Cases and alerting support matrix
+- **jq dependency check** — `setup.sh` now validates that `jq` is installed before running
+
+### Changed
+
+- **Case owner migrated from `securitySolution` to `observability`** — all workflows (create-case, hijack-investigation, daily-briefing, hijack-cases-summary) now use `owner: observability` for Kibana case management, enabling Cases on Observability Serverless deployments
+- **Hijack investigation workflow restructured** — iterates over `event.context.hits` from the alert payload (foreach loop) instead of re-querying Elasticsearch; creates individual cases per matched aircraft with deduplication; removed manual trigger (alert-only); uses `${{ }}` expression syntax for conditions
+- **Slack connector ID parameterised** — workflows use `__SLACK_CONNECTOR_ID__` placeholder substituted at deploy time instead of a hardcoded UUID
+- **Space-aware Kibana API paths** — all workflow `kibana.request` steps and `setup.sh` API calls use `__SPACE_PREFIX__` placeholder (workflows) or `KB_BASE` variable (scripts) for correct space routing
+- **Python3 replaced with jq** — all `python3 -c` inline scripts in `setup.sh` replaced with `jq` equivalents, removing the Python runtime dependency
+- **API key scope simplified** — role descriptor now uses `cluster: ["manage"]` (single privilege) and `"privileges": ["all"]` for Kibana application access instead of listing individual feature privileges
+- **Enrich policy force-delete improved** — when `--force` cannot delete a policy (referenced by a running pipeline), `setup.sh` re-executes it instead of failing
+- **adsbdb lookup** — ICAO24 hex code uppercased with `| upcase` filter for correct API matching
+- **Daily briefing Slack step** — corrected agent output reference from `steps.generate_briefing.output.message` to `steps.generate_briefing.output`
+- **`deploy-es` target** now includes ILM (`ilm,indices,enrich,pipelines`)
+- **AGENTS.md** — added `deploy-ilm` to Make targets table, space-aware `KB_BASE` variable in testing recipes, all API examples updated to use `KB_BASE` instead of `KB_ENDPOINT`
+- **README** — expanded prerequisites for workflows and agents (Agent Builder, Workflows UI toggles, Cases), added Kibana Spaces documentation, added `KB_SPACE` to example `.env` config
+
 ## [1.1.0] - 2026-03-09
 
 ### Added
@@ -138,4 +165,5 @@ Kibana dashboards.
 [0.3.0]: https://github.com/face0b1101/adsb-demo/compare/v0.2.0...v0.3.0
 [1.0.0]: https://github.com/face0b1101/adsb-demo/compare/v0.3.0...v1.0.0
 [1.1.0]: https://github.com/face0b1101/adsb-demo/compare/v1.0.0...v1.1.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.1.0...HEAD
+[1.2.0]: https://github.com/face0b1101/adsb-demo/compare/v1.1.0...v1.2.0
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.2.0...HEAD

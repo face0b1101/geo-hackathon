@@ -14,4 +14,4 @@ steps:
     type: kibana.request
     with:
       method: GET
-      path: "/api/cases/_find?tags=squawk-7500&owner=securitySolution&perPage=100&sortField=createdAt&sortOrder=desc"
+      path: "__SPACE_PREFIX__/api/cases/_find?tags=squawk-7500&owner=observability&perPage=100&sortField=createdAt&sortOrder=desc"

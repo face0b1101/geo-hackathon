@@ -116,7 +116,7 @@ steps:
     type: kibana.request
     with:
       method: GET
-      path: "/api/cases/_find?tags=squawk-7500&owner=securitySolution&perPage=100&sortField=createdAt&sortOrder=desc"
+      path: "__SPACE_PREFIX__/api/cases/_find?tags=squawk-7500&owner=observability&perPage=100&sortField=createdAt&sortOrder=desc"
     on-failure:
       continue: true
 
@@ -193,13 +193,13 @@ steps:
 
   - name: post_to_slack
     type: slack
-    connector-id: "d85ca362-fb82-56f6-867c-4ef2c356d912"
+    connector-id: "__SLACK_CONNECTOR_ID__"
     with:
       message: |
         :airplane: *Daily ADS-B Flight Briefing*
         _Generated {{ execution.startedAt }}_
 
-        {{ steps.generate_briefing.output.message }}
+        {{ steps.generate_briefing.output }}
 
         :bar_chart: <__KB_ENDPOINT__/app/dashboards#/view/06362a65-7aa3-5854-aea9-46954b3140fc?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h,to:now))|Open Dashboard>
 

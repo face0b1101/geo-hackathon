@@ -42,33 +42,38 @@ steps:
     type: kibana.request
     with:
       method: GET
-      path: "/api/cases/_find?tags=icao24:{{ inputs.icao24 }}&tags=squawk-7500&status=open&perPage=1"
+      path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ inputs.icao24 }}&tags=squawk-7500&status=open&perPage=1"
 
   # ------------------------------------------------------------------
   # 2. Create new case or add comment to existing
   # ------------------------------------------------------------------
   - name: handle_case
     type: if
-    condition: "{{ steps.find_existing_case.output.total > 0 }}"
+    condition: "${{ steps.find_existing_case.output.total > 0 }}"
     steps:
-      - name: add_case_comment
-        type: kibana.request
-        with:
-          method: POST
-          path: "/api/cases/{{ steps.find_existing_case.output.cases.0.id }}/comments"
-          body:
-            type: user
-            comment: |
-              ### Hijack Assessment — {{ inputs.verdict | upcase }}
+      - name: update_existing
+        type: foreach
+        foreach: "${{ steps.find_existing_case.output.cases }}"
+        steps:
+          - name: add_case_comment
+            type: kibana.request
+            with:
+              method: POST
+              path: "__SPACE_PREFIX__/api/cases/{{ foreach.item.id }}/comments"
+              body:
+                type: user
+                owner: observability
+                comment: |
+                  ### Hijack Assessment — {{ inputs.verdict | upcase }}
 
-              **Confidence:** {{ inputs.confidence }}
+                  **Confidence:** {{ inputs.confidence }}
 
-              {{ inputs.reasoning }}
+                  {{ inputs.reasoning }}
     else:
       - name: create_case
         type: kibana.createCase
         with:
-          owner: securitySolution
+          owner: observability
           connector:
             id: "none"
             name: "none"

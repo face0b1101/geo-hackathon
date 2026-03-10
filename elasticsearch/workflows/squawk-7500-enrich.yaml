@@ -70,7 +70,7 @@ steps:
   - name: adsbdb_lookup
     type: http
     with:
-      url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 }}?callsign={{ inputs.callsign }}"
+      url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}?callsign={{ inputs.callsign }}"
       method: GET
     on-failure:
       continue: true

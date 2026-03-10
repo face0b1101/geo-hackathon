@@ -4,6 +4,9 @@
       "settings": {
         "index": {
           "mode": "time_series",
+          "lifecycle": {
+            "name": "adsb-lifecycle"
+          },
           "default_pipeline": "demo-aircraft-adsb.opensky",
           "mapping": {
             "source": {

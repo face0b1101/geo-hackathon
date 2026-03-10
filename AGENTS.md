@@ -16,13 +16,14 @@ ______________________________________________________________________
 | -------------------------- | ------------------------------------------------------------------------ |
 | `cp .env.example .env`     | Create local environment config                                          |
 | `make setup`               | Create ES indices, enrich policy, ingest pipeline, import Kibana objects |
+| `make deploy-ilm`          | Deploy ES ILM policy only (skipped on Serverless)                        |
 | `make deploy-indices`      | Deploy ES index templates and data streams only                          |
 | `make deploy-enrich`       | Deploy ES enrich policies only                                           |
 | `make deploy-pipelines`    | Deploy ES ingest pipelines only                                          |
 | `make deploy-kibana`       | Deploy Kibana saved objects (dashboards, data views) only                |
 | `make deploy-workflows`    | Deploy Kibana workflows only                                             |
 | `make deploy-agents`       | Deploy Kibana AI agents only                                             |
-| `make deploy-es`           | Deploy all ES resources (indices + enrich + pipelines)                   |
+| `make deploy-es`           | Deploy all ES resources (ilm + indices + enrich + pipelines)             |
 | `make deploy-ai`           | Deploy AI layer (workflows + agents)                                     |
 | `make redeploy`            | Re-deploy all resources (force overwrite)                                |
 | `make up`                  | Start Logstash (all 4 pipelines)                                         |
@@ -80,6 +81,10 @@ All commands require `required_permissions: ["all"]` in sandboxed environments.
 
 ```sh
 source .env   # provides ES_ENDPOINT, KB_ENDPOINT, ES_API_KEY_ENCODED
+
+# Space-aware Kibana base URL (all Kibana API calls must use KB_BASE)
+KB_BASE="${KB_ENDPOINT%/}"
+[[ -n "${KB_SPACE:-}" ]] && KB_BASE="${KB_BASE}/s/${KB_SPACE}"
 ```
 
 ### Redeploy changed resources
@@ -107,7 +112,7 @@ The Kibana Workflows API (Technical Preview) requires the extra header
 
 ```sh
 # 1. Find workflow ID by name
-WF_ID=$(curl -s -X POST "${KB_ENDPOINT}/api/workflows/search" \
+WF_ID=$(curl -s -X POST "${KB_BASE}/api/workflows/search" \
   -H "Authorization: ApiKey ${ES_API_KEY_ENCODED}" \
   -H "kbn-xsrf: true" \
   -H "x-elastic-internal-origin: kibana" \
@@ -116,7 +121,7 @@ WF_ID=$(curl -s -X POST "${KB_ENDPOINT}/api/workflows/search" \
   | jq -r '.results[] | select(.name=="My Workflow Name") | .id')
 
 # 2. Run (pass inputs:{} even if the workflow has none)
-EXEC_ID=$(curl -s -X POST "${KB_ENDPOINT}/api/workflows/${WF_ID}/run" \
+EXEC_ID=$(curl -s -X POST "${KB_BASE}/api/workflows/${WF_ID}/run" \
   -H "Authorization: ApiKey ${ES_API_KEY_ENCODED}" \
   -H "kbn-xsrf: true" \
   -H "x-elastic-internal-origin: kibana" \
@@ -124,20 +129,20 @@ EXEC_ID=$(curl -s -X POST "${KB_ENDPOINT}/api/workflows/${WF_ID}/run" \
   -d '{"inputs":{}}' | jq -r '.workflowExecutionId')
 
 # 3. Poll until status is "completed" or "failed"
-curl -s "${KB_ENDPOINT}/api/workflowExecutions/${EXEC_ID}" \
+curl -s "${KB_BASE}/api/workflowExecutions/${EXEC_ID}" \
   -H "Authorization: ApiKey ${ES_API_KEY_ENCODED}" \
   -H "kbn-xsrf: true" \
   -H "x-elastic-internal-origin: kibana" \
   | jq '{status, duration, steps: [.stepExecutions[]? | {type: .stepType, status: .status}]}'
 
 # 4. Inspect individual step output
-STEP_ID=$(curl -s "${KB_ENDPOINT}/api/workflowExecutions/${EXEC_ID}" \
+STEP_ID=$(curl -s "${KB_BASE}/api/workflowExecutions/${EXEC_ID}" \
   -H "Authorization: ApiKey ${ES_API_KEY_ENCODED}" \
   -H "kbn-xsrf: true" \
   -H "x-elastic-internal-origin: kibana" \
   | jq -r '.stepExecutions[0].id')
 
-curl -s "${KB_ENDPOINT}/api/workflowExecutions/${EXEC_ID}/steps/${STEP_ID}" \
+curl -s "${KB_BASE}/api/workflowExecutions/${EXEC_ID}/steps/${STEP_ID}" \
   -H "Authorization: ApiKey ${ES_API_KEY_ENCODED}" \
   -H "kbn-xsrf: true" \
   -H "x-elastic-internal-origin: kibana" | jq '.output'
@@ -151,7 +156,7 @@ For workflows with inputs, pass them in the run body:
 Use the Agent Builder converse API to send a message and inspect the response.
 
 ```sh
-curl -s -X POST "${KB_ENDPOINT}/api/agent_builder/converse" \
+curl -s -X POST "${KB_BASE}/api/agent_builder/converse" \
   -H "Authorization: ApiKey ${ES_API_KEY_ENCODED}" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \

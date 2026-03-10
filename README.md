@@ -59,20 +59,29 @@ The setup script deploys a **Daily Flight Briefing** workflow via [Elastic Workf
 
 A dedicated **ADS-B Daily Briefing Analyst** agent is also deployed. You can ask it to trigger the briefing on demand, review results, or discuss findings.
 
-**Prerequisites for workflows:**
+**Prerequisites for workflows and agents:**
 
-- **LLM connector** — an AI connector (OpenAI, Gemini, etc.) must be [configured in Kibana](https://www.elastic.co/docs/explore-analyze/ai-features/llm-guides/llm-connectors) as the default AI connector. The workflow and agents use whichever connector is set as the default.
+- **LLM connector** — an AI connector (OpenAI, Gemini, etc.) must be [configured in Kibana](https://www.elastic.co/docs/explore-analyze/ai-features/llm-guides/llm-connectors) as the default AI connector. The workflows and agents use whichever connector is set as the default.
+- **Agent Builder** — enable the Agent Builder in Kibana: _Stack Management > AI Settings > Generative AI > Agent Builder_ and toggle it on.
+- **Workflows** — enable the Workflows UI in Kibana: _Stack Management > Advanced Settings_ > search for `workflows:ui:enabled` and set it to `true`.
+- **Dark mode (optional)** — if preferred, enable dark mode for your space: _Stack Management > Advanced Settings_ > search for `theme:darkMode` and set it to `Enabled`.
 - **Slack (optional)** — to receive briefings in Slack, [create a Slack app](https://api.slack.com/messaging/webhooks) with an incoming webhook and add the webhook URL to `.env` as `SLACK_WEBHOOK_URL`. The setup script creates the Kibana connector automatically. Alternatively, configure the connector manually in Kibana under Stack Management > Connectors.
-- **Workflows feature flag** — `setup.sh` enables this automatically via the Kibana settings API. If it fails, enable it manually: Kibana > Stack Management > Advanced Settings > search for `workflows:ui:enabled` and set it to `true`.
+- **Cases (optional)** — the squawk 7500 hijack investigation workflow uses Kibana Cases for full functionality — tracking verdicts, deduplication, and Slack routing. Cases are available on Cloud Hosted, Observability Serverless, and start-local (see the [deployment comparison table](#getting-started-with-elasticsearch)). Workflows use `owner: observability` for case management. Without Cases (e.g. Elasticsearch Serverless), the workflow and daily briefing still operate but skip case management and investigation-outcomes sections gracefully.
 
 ## Getting Started with Elasticsearch
 
-You need a running Elasticsearch cluster and Kibana instance to receive the data. The two simplest options are:
+You need a running Elasticsearch cluster and Kibana instance to receive the data. Three options are supported:
 
-- **Elastic Cloud** ([elastic.co/cloud](https://elastic.co/cloud)) - managed Elasticsearch and Kibana (Hosted or Serverless). Your Elasticsearch and Kibana endpoint URLs are shown on the deployment overview page.
-- **Start Local** ([elastic/start-local](https://github.com/elastic/start-local)) - run `curl -fsSL https://elastic.co/start-local | sh` to spin up Elasticsearch and Kibana locally via Docker. Your endpoints are shown at the end of the install and saved in `elastic-start-local/.env`.
+| Option | Cases | Alert-triggered workflows | Notes |
+| --- | :---: | :---: | --- |
+| **Elastic Cloud Hosted** ([elastic.co/cloud](https://elastic.co/cloud)) | Yes | Yes | Full-featured managed deployment. Recommended for the full demo experience. |
+| **Observability Serverless** ([elastic.co/cloud](https://elastic.co/cloud)) | Yes | Yes | Serverless project with Cases and alerting. Choose this if you want serverless. |
+| **start-local** ([elastic/start-local](https://github.com/elastic/start-local)) | Yes | Yes | Local Docker deployment. Run `curl -fsSL https://elastic.co/start-local \| sh`. |
+| Elasticsearch Serverless | No | No | Core ingestion and dashboards work, but Cases and alert-triggered workflows are unavailable. |
 
-Both approaches give you an **Elasticsearch endpoint URL** and a **Kibana endpoint URL**. You will also need an API key - see below.
+> **Note** — The hijack investigation workflow uses Kibana Cases to record investigation outcomes. On deployments without Cases support the workflow still runs but skips case creation gracefully (`on-failure: continue`). All other features — ingestion, dashboards, AI agents, the daily briefing — work on every deployment type.
+
+Your Elasticsearch and Kibana endpoint URLs are shown on the deployment overview page (Cloud) or at the end of the install (start-local). You will also need an API key — see below.
 
 ## Generate an API Key
 
@@ -85,10 +94,7 @@ POST /_security/api_key
   "role_descriptors": {
     "adsb_setup": {
       "cluster": [
-        "monitor",
-        "manage_enrich",
-        "manage_ingest_pipelines",
-        "manage_index_templates"
+        "manage"
       ],
       "indices": [
         {
@@ -103,15 +109,7 @@ POST /_security/api_key
       "applications": [
         {
           "application": "kibana-.kibana",
-          "privileges": [
-            "feature_savedObjectsManagement.all",
-            "feature_agentBuilder.all",
-            "feature_workflowsManagement.all",
-            "feature_actions.all",
-            "feature_stackAlerts.all",
-            "feature_advancedSettings.all",
-            "feature_siem.all"
-          ],
+          "privileges": ["all"],
           "resources": ["*"]
         }
       ]
@@ -119,6 +117,8 @@ POST /_security/api_key
   }
 }
 ```
+
+> **Kibana privileges** — The `all` application privilege is equivalent to the `kibana_admin` built-in role. It grants full access to all Kibana features across all spaces, including space management, saved objects, AI agents, workflows, connectors, alerting rules, cases, and advanced settings. This works identically on Cloud Hosted, Observability Serverless, and start-local — each deployment exposes only the features it supports.
 
 From the response, copy the three values into your `.env` file:
 
@@ -152,10 +152,13 @@ ES_API_KEY_ID=VuaCfGcBCdbkQm-e5aOx
 ES_API_KEY=ui2lp2axTNmsyakw9tvNnw
 ES_API_KEY_ENCODED=VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeWFrdzl0dk5udw==
 KB_ENDPOINT=https://my-deployment.kb.us-central1.gcp.cloud.es.io
+KB_SPACE=adsb              # optional — deploy into a named Kibana space
 
 OPENSKY_API_USER=your_opensky_username
 OPENSKY_API_PW=your_opensky_password
 ```
+
+> **Kibana Spaces** — Set `KB_SPACE` to deploy all Kibana resources (dashboards, agents, workflows) into a dedicated space. `setup.sh` creates the space automatically with the Observability solution view. Leave `KB_SPACE` empty to use the default space.
 
 ### 3. Set up Elasticsearch
 
@@ -174,7 +177,7 @@ The script is safe to re-run — existing resources are skipped by default. Use 
 ./setup.sh --help                    # Show available groups and flags
 ```
 
-Available groups: `indices`, `enrich`, `pipelines`, `kibana`, `agents`, `workflows`. There are also `make` shortcuts for each group — see [Make Targets](#make-targets) below.
+Available groups: `space`, `ilm`, `indices`, `enrich`, `pipelines`, `kibana`, `agents`, `workflows`. There are also `make` shortcuts for each group — see [Make Targets](#make-targets) below.
 
 ### 4. Run
 
@@ -215,13 +218,14 @@ Run `make help` to see all available targets. Every target is a thin wrapper aro
 | Command | Description |
 | --- | --- |
 | `make setup` | Run full Elasticsearch setup (skip existing) |
+| `make deploy-ilm` | Deploy ES ILM policy (skipped on Serverless) |
 | `make deploy-indices` | Deploy ES index templates and data streams |
 | `make deploy-enrich` | Deploy ES enrich policies |
 | `make deploy-pipelines` | Deploy ES ingest pipelines |
 | `make deploy-kibana` | Deploy Kibana saved objects (dashboards, data views) |
 | `make deploy-workflows` | Deploy Kibana workflows |
 | `make deploy-agents` | Deploy Kibana AI agents |
-| `make deploy-es` | Deploy all ES resources (indices + enrich + pipelines) |
+| `make deploy-es` | Deploy all ES resources (ilm + indices + enrich + pipelines) |
 | `make deploy-ai` | Deploy AI layer (workflows + agents) |
 | `make redeploy` | Re-deploy all resources with `--force` |
 

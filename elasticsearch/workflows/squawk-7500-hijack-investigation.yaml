@@ -1,11 +1,12 @@
 name: Squawk 7500 Hijack Investigation
 description: >-
-  Alert-triggered investigation workflow for squawk 7500 (hijack) signals.
-  Deduplicates via Kibana case management, enriches with flight history and
-  external data (adsbdb aircraft/route, adsb.lol live position, Reuters news),
-  invokes the hijack assessment agent for AI-powered false-positive analysis,
-  and routes based on the verdict — Slack for genuine threats, auto-close for
-  false positives.
+  Alert-only investigation workflow for squawk 7500 (hijack) signals.
+  Iterates over matched documents from the alert's event payload, deduplicates
+  per aircraft (skipping those with an existing open case), creates a Kibana
+  case, enriches with flight history and external data (adsbdb aircraft/route,
+  adsb.lol live position, Reuters news), invokes the hijack assessment agent
+  for AI-powered false-positive analysis, and routes based on the verdict —
+  Slack for genuine threats, auto-close for false positives.
 enabled: true
 tags: ["adsb", "squawk-7500", "hijack", "alert", "ai", "cases"]
 
@@ -15,279 +16,253 @@ consts:
 
 triggers:
   - type: alert
-  - type: manual
 
 steps:
   # ------------------------------------------------------------------
-  # 1. Fetch the most recent squawk 7500 document
+  # 1. Investigate each matched document from the alert
   # ------------------------------------------------------------------
-  - name: fetch_squawk_event
-    type: elasticsearch.request
-    with:
-      method: POST
-      path: "/demos-aircraft-adsb/_search"
-      body:
-        query:
-          bool:
-            filter:
-              - term:
-                  squawk: "7500"
-              - range:
-                  "@timestamp":
-                    gte: "now-10m"
-        size: 1
-        sort:
-          - "@timestamp":
-              order: desc
-
-  # ------------------------------------------------------------------
-  # 2. Deduplicate — look for an existing open case for this aircraft
-  # ------------------------------------------------------------------
-  - name: find_existing_case
-    type: kibana.request
-    with:
-      method: GET
-      path: "/api/cases/_find?tags=icao24:{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}&tags=squawk-7500&status=open&perPage=1"
-
-  # ------------------------------------------------------------------
-  # 3. Case management — add comment to existing or create new
-  # ------------------------------------------------------------------
-  - name: handle_case
-    type: if
-    condition: "{{ steps.find_existing_case.output.total > 0 }}"
+  - name: investigate_each
+    type: foreach
+    foreach: "${{ event.context.hits }}"
     steps:
-      - name: add_case_comment
+      # ----------------------------------------------------------------
+      # 1a. Dedup — check for an existing open case for this aircraft
+      # ----------------------------------------------------------------
+      - name: find_existing_case
         type: kibana.request
         with:
-          method: POST
-          path: "/api/cases/{{ steps.find_existing_case.output.cases.0.id }}/comments"
-          body:
-            type: user
-            comment: >-
-              Repeated squawk 7500 detected at {{ execution.startedAt }}.
-              Position: {{ steps.fetch_squawk_event.output.hits.hits.0._source.latitude }},
-              {{ steps.fetch_squawk_event.output.hits.hits.0._source.longitude }}
-              | Altitude: {{ steps.fetch_squawk_event.output.hits.hits.0._source.baro_altitude }}m
-              | Velocity: {{ steps.fetch_squawk_event.output.hits.hits.0._source.velocity }} m/s
-              | On ground: {{ steps.fetch_squawk_event.output.hits.hits.0._source.on_ground }}
-    else:
-      - name: create_case
-        type: kibana.createCase
-        with:
-          owner: securitySolution
-          connector:
-            id: "none"
-            name: "none"
-            type: ".none"
-            fields: null
-          settings:
-            syncAlerts: true
-          title: >-
-            Squawk 7500 (Hijack) —
-            {{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}
-            ({{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }})
-          description: |
-            Automated investigation triggered by squawk 7500 detection.
+          method: GET
+          path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ foreach.item._source.icao24 }}&tags=squawk-7500&status=open&perPage=1"
 
-            *Aircraft:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}
-            *Callsign:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}
-            *Origin country:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.origin_country }}
-            *Position:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.latitude }}, {{ steps.fetch_squawk_event.output.hits.hits.0._source.longitude }}
-            *Altitude:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.baro_altitude }}m
-            *Velocity:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.velocity }} m/s
-            *On ground:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.on_ground }}
-            *Region:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.geo.NAME }}, {{ steps.fetch_squawk_event.output.hits.hits.0._source.geo.SUBREGION }}
-          tags:
-            - "squawk-7500"
-            - "icao24:{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}"
-            - "callsign:{{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}"
-            - "auto-investigation"
+      - name: new_aircraft_only
+        type: if
+        condition: "${{ steps.find_existing_case.output.total == 0 }}"
+        steps:
+          # ----------------------------------------------------------------
+          # 2a. Create case for this aircraft
+          # ----------------------------------------------------------------
+          - name: create_case
+            type: kibana.createCase
+            with:
+              owner: observability
+              connector:
+                id: "none"
+                name: "none"
+                type: ".none"
+                fields: null
+              settings:
+                syncAlerts: true
+              title: >-
+                Squawk 7500 (Hijack) —
+                {{ foreach.item._source.callsign }}
+                ({{ foreach.item._source.icao24 }})
+              description: |
+                Automated investigation triggered by squawk 7500 detection.
 
-  # ------------------------------------------------------------------
-  # 4. Re-fetch the open case so we have its ID regardless of branch
-  # ------------------------------------------------------------------
-  - name: resolve_case
-    type: kibana.request
-    with:
-      method: GET
-      path: "/api/cases/_find?tags=icao24:{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}&tags=squawk-7500&status=open&perPage=1"
+                *Aircraft:* {{ foreach.item._source.icao24 }}
+                *Callsign:* {{ foreach.item._source.callsign }}
+                *Origin country:* {{ foreach.item._source.origin_country }}
+                *Position:* {{ foreach.item._source.latitude }}, {{ foreach.item._source.longitude }}
+                *Altitude:* {{ foreach.item._source.baro_altitude }}m
+                *Velocity:* {{ foreach.item._source.velocity }} m/s
+                *On ground:* {{ foreach.item._source.on_ground }}
+                *Region:* {{ foreach.item._source.geo.NAME | default: "unknown" }}, {{ foreach.item._source.geo.SUBREGION | default: "unknown" }}
+                *Dashboard:* __KB_ENDPOINT__/app/dashboards#/view/ce6e34c0-ae6d-11ec-9a01-6da5271d9a1d?_g=(time:(from:now-6h,to:now))&_a=(filters:!((query:(match_phrase:(icao24:'{{ foreach.item._source.icao24 }}')))))
+              tags:
+                - "squawk-7500"
+                - "icao24:{{ foreach.item._source.icao24 }}"
+                - "callsign:{{ foreach.item._source.callsign }}"
+                - "auto-investigation"
 
-  # ------------------------------------------------------------------
-  # 5. Enrich — 6-hour flight history for this aircraft
-  # ------------------------------------------------------------------
-  - name: flight_history
-    type: elasticsearch.search
-    with:
-      index: "demos-aircraft-adsb"
-      query:
-        bool:
-          filter:
-            - term:
-                icao24: "{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}"
-            - range:
-                "@timestamp":
-                  gte: "{{ consts.historyWindow }}"
-      size: 200
-      sort:
-        - "@timestamp"
+          # ----------------------------------------------------------------
+          # 2b. Enrich — 6-hour flight history
+          # ----------------------------------------------------------------
+          - name: flight_history
+            type: elasticsearch.search
+            with:
+              index: "demos-aircraft-adsb"
+              query:
+                bool:
+                  filter:
+                    - term:
+                        icao24: "{{ foreach.item._source.icao24 }}"
+                    - range:
+                        "@timestamp":
+                          gte: "{{ consts.historyWindow }}"
+              size: 200
+              sort:
+                - "@timestamp"
 
-  # ------------------------------------------------------------------
-  # 6a. Correlate — adsbdb aircraft metadata + expected route
-  # ------------------------------------------------------------------
-  - name: adsbdb_lookup
-    type: http
-    with:
-      url: "https://api.adsbdb.com/v0/aircraft/{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}?callsign={{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}"
-      method: GET
-    on-failure:
-      continue: true
+          # ----------------------------------------------------------------
+          # 2c. Correlate — adsbdb aircraft metadata + expected route
+          # ----------------------------------------------------------------
+          - name: adsbdb_lookup
+            type: http
+            with:
+              url: "https://api.adsbdb.com/v0/aircraft/{{ foreach.item._source.icao24 | upcase }}?callsign={{ foreach.item._source.callsign }}"
+              method: GET
+            on-failure:
+              continue: true
 
-  # ------------------------------------------------------------------
-  # 6b. Correlate — adsb.lol live position cross-reference
-  # ------------------------------------------------------------------
-  - name: adsblol_lookup
-    type: http
-    with:
-      url: "https://api.adsb.lol/v2/icao/{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}"
-      method: GET
-    on-failure:
-      continue: true
+          # ----------------------------------------------------------------
+          # 2d. Correlate — adsb.lol live position cross-reference
+          # ----------------------------------------------------------------
+          - name: adsblol_lookup
+            type: http
+            with:
+              url: "https://api.adsb.lol/v2/icao/{{ foreach.item._source.icao24 }}"
+              method: GET
+            on-failure:
+              continue: true
 
-  # ------------------------------------------------------------------
-  # 6c. Correlate — Reuters news search (optional, needs RAPIDAPI_KEY)
-  # ------------------------------------------------------------------
-  - name: reuters_search
-    type: http
-    with:
-      url: "https://reuters-api.p.rapidapi.com/search?keywordName={{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}%20hijack&limit=5"
-      method: GET
-      headers:
-        x-rapidapi-key: "__RAPIDAPI_KEY__"
-        x-rapidapi-host: "reuters-api.p.rapidapi.com"
-    on-failure:
-      continue: true
+          # ----------------------------------------------------------------
+          # 2e. Correlate — Reuters news search (optional)
+          # ----------------------------------------------------------------
+          - name: reuters_search
+            type: http
+            with:
+              url: "https://reuters-api.p.rapidapi.com/search?keywordName={{ foreach.item._source.callsign }}%20hijack&limit=5"
+              method: GET
+              headers:
+                x-rapidapi-key: "__RAPIDAPI_KEY__"
+                x-rapidapi-host: "reuters-api.p.rapidapi.com"
+            on-failure:
+              continue: true
 
-  # ------------------------------------------------------------------
-  # 7. AI assessment — invoke the hijack assessment agent
-  # ------------------------------------------------------------------
-  - name: ai_assessment
-    type: ai.agent
-    with:
-      agent_id: "adsb_hijack_assessment_agent"
-      message: |
-        Assess whether this squawk 7500 signal is genuine or a false positive.
-        All enrichment data is provided below — do NOT call the enrichment
-        workflow tool; assess directly from this data.
+          # ----------------------------------------------------------------
+          # 2f. AI assessment — invoke the hijack assessment agent
+          # ----------------------------------------------------------------
+          - name: ai_assessment
+            type: ai.agent
+            with:
+              agent_id: "adsb_hijack_assessment_agent"
+              message: |
+                Assess whether this squawk 7500 signal is genuine or a false positive.
+                All enrichment data is provided below — do NOT call the enrichment
+                workflow tool; assess directly from this data.
 
-        IMPORTANT: Begin your response with exactly one of these markers on
-        its own line so the workflow can route your verdict:
-          [GENUINE]
-          [FALSE_POSITIVE]
-        Then provide your confidence (0–1) and reasoning.
+                IMPORTANT: Begin your response with exactly one of these markers on
+                its own line so the workflow can route your verdict:
+                  [GENUINE]
+                  [FALSE_POSITIVE]
+                Then provide your confidence (0–1) and reasoning.
 
-        === TRIGGERING EVENT ===
-        ICAO24: {{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}
-        Callsign: {{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}
-        Origin country: {{ steps.fetch_squawk_event.output.hits.hits.0._source.origin_country }}
-        Position: {{ steps.fetch_squawk_event.output.hits.hits.0._source.latitude }}, {{ steps.fetch_squawk_event.output.hits.hits.0._source.longitude }}
-        Altitude: {{ steps.fetch_squawk_event.output.hits.hits.0._source.baro_altitude }}m barometric / {{ steps.fetch_squawk_event.output.hits.hits.0._source.geo_altitude }}m geometric
-        Velocity: {{ steps.fetch_squawk_event.output.hits.hits.0._source.velocity }} m/s
-        Heading: {{ steps.fetch_squawk_event.output.hits.hits.0._source.true_track }}°
-        Vertical rate: {{ steps.fetch_squawk_event.output.hits.hits.0._source.vertical_rate }} m/s
-        On ground: {{ steps.fetch_squawk_event.output.hits.hits.0._source.on_ground }}
-        Nearest airport: {{ steps.fetch_squawk_event.output.hits.hits.0._source.airport.name }} ({{ steps.fetch_squawk_event.output.hits.hits.0._source.airport.iata_code }}, {{ steps.fetch_squawk_event.output.hits.hits.0._source.airport.activity }})
-        Region: {{ steps.fetch_squawk_event.output.hits.hits.0._source.geo.NAME }}, {{ steps.fetch_squawk_event.output.hits.hits.0._source.geo.SUBREGION }} ({{ steps.fetch_squawk_event.output.hits.hits.0._source.geo.CONTINENT }})
+                === TRIGGERING EVENT ===
+                ICAO24: {{ foreach.item._source.icao24 }}
+                Callsign: {{ foreach.item._source.callsign }}
+                Origin country: {{ foreach.item._source.origin_country }}
+                Position: {{ foreach.item._source.latitude }}, {{ foreach.item._source.longitude }}
+                Altitude: {{ foreach.item._source.baro_altitude }}m barometric / {{ foreach.item._source.geo_altitude }}m geometric
+                Velocity: {{ foreach.item._source.velocity }} m/s
+                Heading: {{ foreach.item._source.true_track }}°
+                Vertical rate: {{ foreach.item._source.vertical_rate }} m/s
+                On ground: {{ foreach.item._source.on_ground }}
+                Nearest airport: {{ foreach.item._source.airport.name }} ({{ foreach.item._source.airport.iata_code }}, {{ foreach.item._source.airport.activity }})
+                Region: {{ foreach.item._source.geo.NAME | default: "unknown" }}, {{ foreach.item._source.geo.SUBREGION | default: "unknown" }} ({{ foreach.item._source.geo.CONTINENT | default: "unknown" }})
 
-        === FLIGHT HISTORY (last 6 hours, {{ steps.flight_history.output.hits.total.value }} data points) ===
-        {{ steps.flight_history.output.hits.hits | json:2 }}
+                === FLIGHT HISTORY (last 6 hours, {{ steps.flight_history.output.hits.total.value }} data points) ===
+                {{ steps.flight_history.output.hits.hits | json:2 }}
 
-        === AIRCRAFT METADATA & EXPECTED ROUTE (adsbdb) ===
-        {{ steps.adsbdb_lookup.output | json:2 }}
+                === AIRCRAFT METADATA & EXPECTED ROUTE (adsbdb) ===
+                {{ steps.adsbdb_lookup.output | json:2 }}
 
-        === LIVE POSITION CROSS-REFERENCE (adsb.lol) ===
-        {{ steps.adsblol_lookup.output | json:2 }}
+                === LIVE POSITION CROSS-REFERENCE (adsb.lol) ===
+                {{ steps.adsblol_lookup.output | json:2 }}
 
-        === NEWS SEARCH (Reuters — empty if API key not configured) ===
-        {{ steps.reuters_search.output | json:2 }}
+                === NEWS SEARCH (Reuters — empty if API key not configured) ===
+                {{ steps.reuters_search.output | json:2 }}
 
-  # ------------------------------------------------------------------
-  # 8. Update case with AI assessment and enrichment summary
-  # ------------------------------------------------------------------
-  - name: update_case_enrichment
-    type: kibana.request
-    with:
-      method: POST
-      path: "/api/cases/{{ steps.resolve_case.output.cases.0.id }}/comments"
-      body:
-        type: user
-        comment: |
-          ### AI Hijack Assessment
+          # ----------------------------------------------------------------
+          # 2g. Update case with AI assessment and enrichment summary
+          # ----------------------------------------------------------------
+          - name: update_case_enrichment
+            type: kibana.request
+            with:
+              method: POST
+              path: "__SPACE_PREFIX__/api/cases/{{ steps.create_case.output.id }}/comments"
+              body:
+                type: user
+                owner: observability
+                comment: |
+                  ### AI Hijack Assessment
 
-          {{ steps.ai_assessment.output.message }}
+                  {{ steps.ai_assessment.output }}
 
-          ---
+                  ---
 
-          **Data sources consulted:**
-          - Flight history: {{ steps.flight_history.output.hits.total.value }} data points (last 6 hours)
-          - Aircraft registry (adsbdb): {{ steps.adsbdb_lookup.output.response.aircraft.type | default: "unavailable" }} — {{ steps.adsbdb_lookup.output.response.aircraft.registered_owner | default: "unknown" }}
-          - Expected route (adsbdb): {{ steps.adsbdb_lookup.output.response.flightroute.origin.iata_code | default: "?" }} → {{ steps.adsbdb_lookup.output.response.flightroute.destination.iata_code | default: "?" }}
-          - Live tracking (adsb.lol): cross-referenced
-          - News search (Reuters): consulted
+                  **Data sources consulted:**
+                  - Flight history: {{ steps.flight_history.output.hits.total.value }} data points (last 6 hours)
+                  - Aircraft registry (adsbdb): {{ steps.adsbdb_lookup.output.data.response.aircraft.type | default: "unavailable" }} — {{ steps.adsbdb_lookup.output.data.response.aircraft.registered_owner | default: "unknown" }}
+                  - Expected route (adsbdb): {{ steps.adsbdb_lookup.output.data.response.flightroute.origin.iata_code | default: "?" }} → {{ steps.adsbdb_lookup.output.data.response.flightroute.destination.iata_code | default: "?" }}
+                  - Live tracking (adsb.lol): cross-referenced
+                  - News search (Reuters): consulted
 
-  # ------------------------------------------------------------------
-  # 9. Route — Slack alert for genuine, auto-close for false positive
-  # ------------------------------------------------------------------
-  - name: route_verdict
-    type: if
-    condition: "{{ steps.ai_assessment.output.message contains '[GENUINE]' }}"
-    steps:
-      - name: tag_genuine
-        type: kibana.request
-        with:
-          method: PATCH
-          path: "/api/cases"
-          body:
-            cases:
-              - id: "{{ steps.resolve_case.output.cases.0.id }}"
-                version: "{{ steps.resolve_case.output.cases.0.version }}"
-                tags:
-                  - "squawk-7500"
-                  - "icao24:{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}"
-                  - "callsign:{{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}"
-                  - "auto-investigation"
-                  - "verdict:genuine"
-      - name: notify_slack
-        type: slack
-        connector-id: "d85ca362-fb82-56f6-867c-4ef2c356d912"
-        with:
-          message: |
-            :rotating_light: *Squawk 7500 — Potential Hijack*
-            _{{ execution.startedAt }}_
+                  :bar_chart: [Aircraft Detail Dashboard](<__KB_ENDPOINT__/app/dashboards#/view/ce6e34c0-ae6d-11ec-9a01-6da5271d9a1d?_g=(time:(from:now-6h,to:now))&_a=(filters:!((query:(match_phrase:(icao24:'{{ foreach.item._source.icao24 }}')))))>)
 
-            *Aircraft:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }} ({{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }})
-            *Origin:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.origin_country }}
-            *Position:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.latitude }}, {{ steps.fetch_squawk_event.output.hits.hits.0._source.longitude }}
-            *Altitude:* {{ steps.fetch_squawk_event.output.hits.hits.0._source.baro_altitude }}m
+          # ----------------------------------------------------------------
+          # 2h. Re-fetch case for current version (after comment changed it)
+          # ----------------------------------------------------------------
+          - name: refetch_case
+            type: kibana.request
+            with:
+              method: GET
+              path: "__SPACE_PREFIX__/api/cases/{{ steps.create_case.output.id }}"
 
-            {{ steps.ai_assessment.output.message }}
+          # ----------------------------------------------------------------
+          # 2i. Route — Slack for genuine, auto-close for false positive
+          # ----------------------------------------------------------------
+          - name: route_verdict
+            type: if
+            condition: "${{ steps.ai_assessment.output contains '[GENUINE]' }}"
+            steps:
+              - name: tag_genuine
+                type: kibana.request
+                with:
+                  method: PATCH
+                  path: "__SPACE_PREFIX__/api/cases"
+                  body:
+                    cases:
+                      - id: "{{ steps.create_case.output.id }}"
+                        version: "{{ steps.refetch_case.output.version }}"
+                        tags:
+                          - "squawk-7500"
+                          - "icao24:{{ foreach.item._source.icao24 }}"
+                          - "callsign:{{ foreach.item._source.callsign }}"
+                          - "auto-investigation"
+                          - "verdict:genuine"
+              - name: notify_slack
+                type: slack
+                connector-id: "__SLACK_CONNECTOR_ID__"
+                with:
+                  message: |
+                    :rotating_light: *Squawk 7500 — Potential Hijack*
+                    _{{ execution.startedAt }}_
 
-            :file_folder: <__KB_ENDPOINT__/app/security/cases/{{ steps.resolve_case.output.cases.0.id }}|Open Case>
-        on-failure:
-          continue: true
-    else:
-      - name: close_case
-        type: kibana.request
-        with:
-          method: PATCH
-          path: "/api/cases"
-          body:
-            cases:
-              - id: "{{ steps.resolve_case.output.cases.0.id }}"
-                version: "{{ steps.resolve_case.output.cases.0.version }}"
-                status: "closed"
-                tags:
-                  - "squawk-7500"
-                  - "icao24:{{ steps.fetch_squawk_event.output.hits.hits.0._source.icao24 }}"
-                  - "callsign:{{ steps.fetch_squawk_event.output.hits.hits.0._source.callsign }}"
-                  - "auto-investigation"
-                  - "verdict:false_positive"
+                    *Aircraft:* {{ foreach.item._source.callsign }} ({{ foreach.item._source.icao24 }})
+                    *Origin:* {{ foreach.item._source.origin_country }}
+                    *Position:* {{ foreach.item._source.latitude }}, {{ foreach.item._source.longitude }}
+                    *Altitude:* {{ foreach.item._source.baro_altitude }}m
+
+                    {{ steps.ai_assessment.output }}
+
+                    :file_folder: <__KB_ENDPOINT__/app/security/cases/{{ steps.create_case.output.id }}|Open Case>
+                    :bar_chart: <__KB_ENDPOINT__/app/dashboards#/view/ce6e34c0-ae6d-11ec-9a01-6da5271d9a1d?_g=(time:(from:now-6h,to:now))&_a=(filters:!((query:(match_phrase:(icao24:'{{ foreach.item._source.icao24 }}')))))|Aircraft Detail Dashboard>
+                on-failure:
+                  continue: true
+            else:
+              - name: close_case
+                type: kibana.request
+                with:
+                  method: PATCH
+                  path: "__SPACE_PREFIX__/api/cases"
+                  body:
+                    cases:
+                      - id: "{{ steps.create_case.output.id }}"
+                        version: "{{ steps.refetch_case.output.version }}"
+                        status: "closed"
+                        tags:
+                          - "squawk-7500"
+                          - "icao24:{{ foreach.item._source.icao24 }}"
+                          - "callsign:{{ foreach.item._source.callsign }}"
+                          - "auto-investigation"
+                          - "verdict:false_positive"
