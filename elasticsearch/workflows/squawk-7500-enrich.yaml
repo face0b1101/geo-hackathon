@@ -65,25 +65,30 @@ steps:
               order: desc
 
   # ------------------------------------------------------------------
-  # 3. adsbdb — aircraft metadata + expected route
-  #    Combined call returns both when the callsign is known; falls back
-  #    to ICAO24-only lookup when the callsign is unrecognised.
+  # 3a. adsbdb — aircraft metadata (always runs)
   # ------------------------------------------------------------------
-  - name: adsbdb_lookup
+  - name: adsbdb_aircraft
     type: http
     with:
-      url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}?callsign={{ inputs.callsign }}"
+      url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}"
       method: GET
     on-failure:
-      fallback:
-        - name: adsbdb_fallback
-          type: http
-          with:
-            url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}"
-            method: GET
-          on-failure:
-            continue: true
       continue: true
+
+  # ------------------------------------------------------------------
+  # 3b. adsbdb — expected route (only when callsign provided)
+  # ------------------------------------------------------------------
+  - name: has_callsign
+    type: if
+    condition: "${{ inputs.callsign != '' }}"
+    steps:
+      - name: adsbdb_route
+        type: http
+        with:
+          url: "https://api.adsbdb.com/v0/callsign/{{ inputs.callsign }}"
+          method: GET
+        on-failure:
+          continue: true
 
   # ------------------------------------------------------------------
   # 4. adsb.lol — live position cross-reference

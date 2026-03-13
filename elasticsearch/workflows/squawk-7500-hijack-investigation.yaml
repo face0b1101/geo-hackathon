@@ -124,24 +124,30 @@ steps:
           size: 200
 
       # ----------------------------------------------------------------
-      # 5. Correlate — adsbdb aircraft metadata + expected route.
-      #    Falls back to ICAO24-only when callsign is unrecognised.
+      # 5a. Correlate — adsbdb aircraft metadata (always runs)
       # ----------------------------------------------------------------
-      - name: adsbdb_lookup
+      - name: adsbdb_aircraft
         type: http
         with:
-          url: "https://api.adsbdb.com/v0/aircraft/{{ event.alerts[0].kibana.alert.grouping.icao24 | upcase }}?callsign={{ event.alerts[0].kibana.alert.grouping.callsign }}"
+          url: "https://api.adsbdb.com/v0/aircraft/{{ event.alerts[0].kibana.alert.grouping.icao24 | upcase }}"
           method: GET
         on-failure:
-          fallback:
-            - name: adsbdb_fallback
-              type: http
-              with:
-                url: "https://api.adsbdb.com/v0/aircraft/{{ event.alerts[0].kibana.alert.grouping.icao24 | upcase }}"
-                method: GET
-              on-failure:
-                continue: true
           continue: true
+
+      # ----------------------------------------------------------------
+      # 5b. Correlate — adsbdb expected route (only when callsign known)
+      # ----------------------------------------------------------------
+      - name: has_callsign
+        type: if
+        condition: "${{ event.alerts[0].kibana.alert.grouping.callsign != '' }}"
+        steps:
+          - name: adsbdb_route
+            type: http
+            with:
+              url: "https://api.adsbdb.com/v0/callsign/{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+              method: GET
+            on-failure:
+              continue: true
 
       # ----------------------------------------------------------------
       # 6. Correlate — adsb.lol live position cross-reference
@@ -201,8 +207,11 @@ steps:
             === FLIGHT HISTORY (last 6 hours, {{ steps.flight_history.output.hits.total.value }} data points) ===
             {{ steps.flight_history.output.hits.hits | json:2 }}
 
-            === AIRCRAFT METADATA & EXPECTED ROUTE (adsbdb) ===
-            {{ steps.adsbdb_lookup.output | json:2 }}
+            === AIRCRAFT METADATA (adsbdb) ===
+            {{ steps.adsbdb_aircraft.output | json:2 }}
+
+            === EXPECTED ROUTE (adsbdb — empty if callsign unknown) ===
+            {{ steps.adsbdb_route.output | json:2 }}
 
             === LIVE POSITION CROSS-REFERENCE (adsb.lol) ===
             {{ steps.adsblol_lookup.output | json:2 }}
@@ -228,8 +237,8 @@ steps:
 
               **Data sources consulted:**
               - Flight history: {{ steps.flight_history.output.hits.total.value }} data points (last 6 hours)
-              - Aircraft registry (adsbdb): {{ steps.adsbdb_lookup.output.data.response.aircraft.type | default: "unavailable" }} — {{ steps.adsbdb_lookup.output.data.response.aircraft.registered_owner | default: "unknown" }}
-              - Expected route (adsbdb): {{ steps.adsbdb_lookup.output.data.response.flightroute.origin.iata_code | default: "?" }} → {{ steps.adsbdb_lookup.output.data.response.flightroute.destination.iata_code | default: "?" }}
+              - Aircraft registry (adsbdb): {{ steps.adsbdb_aircraft.output.data.response.aircraft.type | default: "unavailable" }} — {{ steps.adsbdb_aircraft.output.data.response.aircraft.registered_owner | default: "unknown" }}
+              - Expected route (adsbdb): {{ steps.adsbdb_route.output.data.response.flightroute.origin.iata_code | default: "?" }} → {{ steps.adsbdb_route.output.data.response.flightroute.destination.iata_code | default: "?" }}
               - Live tracking (adsb.lol): cross-referenced
               - News search (GNews): consulted
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-03-13
+
+### Fixed
+
+- **adsbdb enrichment failing silently** — when the alert callsign was empty or null, the combined `/v0/aircraft/{icao24}?callsign=` URL returned HTTP 200 with `{"response": "invalid callsign: "}`, bypassing the `on-failure` fallback and producing "unavailable — unknown" in case comments; split into two separate steps: `adsbdb_aircraft` (unconditional `/v0/aircraft/{icao24}`) and `adsbdb_route` (conditional `/v0/callsign/{callsign}`, guarded by a non-empty callsign check); applied to both `squawk-7500-hijack-investigation.yaml` and `squawk-7500-enrich.yaml`
+- **Case comment output paths corrected** — template references updated from `steps.adsbdb_lookup.output.data.response.*` to the new split step names (`steps.adsbdb_aircraft` / `steps.adsbdb_route`)
+- **AI prompt updated** — agent prompt now receives aircraft metadata and expected route as separate labelled sections instead of a single combined dump
+
 ## [1.4.2] - 2026-03-13
 
 ### Changed
@@ -227,4 +235,5 @@ Kibana dashboards.
 [1.4.0]: https://github.com/face0b1101/adsb-demo/compare/v1.3.0...v1.4.0
 [1.4.1]: https://github.com/face0b1101/adsb-demo/compare/v1.4.0...v1.4.1
 [1.4.2]: https://github.com/face0b1101/adsb-demo/compare/v1.4.1...v1.4.2
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.4.2...HEAD
+[1.4.3]: https://github.com/face0b1101/adsb-demo/compare/v1.4.2...v1.4.3
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.4.3...HEAD
