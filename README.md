@@ -24,6 +24,7 @@ flowchart LR
     LS -->|"enrich + index"| ES
     ES -->|"visualise"| KB
     AB -->|"query"| ES
+    KB -->|"query"| ES
     KB -->|"Agent Builder"| AB
     WF -->|"aggregate + AI prompt"| ES
     WF -->|"post briefing"| SL
