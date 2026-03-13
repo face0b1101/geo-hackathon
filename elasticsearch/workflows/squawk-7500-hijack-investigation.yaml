@@ -177,11 +177,13 @@ steps:
             All enrichment data is provided below — do NOT call the enrichment
             workflow tool; assess directly from this data.
 
-            IMPORTANT: Begin your response with exactly one of these markers on
-            its own line so the workflow can route your verdict:
-              [GENUINE]
-              [FALSE_POSITIVE]
-            Then provide your confidence (0–1) and reasoning.
+            Format your response using the structured output format from your
+            instructions (title line, Verdict, Confidence, Reasoning with
+            key-evidence bullets). The workflow parses the "**Verdict:**" line
+            for routing, so it must read exactly:
+              **Verdict:** `genuine`
+            or
+              **Verdict:** `false_positive`
 
             === TRIGGERING EVENT ===
             ICAO24: {{ event.alerts[0].kibana.alert.grouping.icao24 }}
@@ -220,8 +222,6 @@ steps:
             type: user
             owner: observability
             comment: |
-              ### AI Hijack Assessment
-
               {{ steps.ai_assessment.output }}
 
               ---
@@ -249,7 +249,7 @@ steps:
       # ----------------------------------------------------------------
       - name: route_verdict
         type: if
-        condition: "${{ steps.ai_assessment.output contains '[GENUINE]' }}"
+        condition: "${{ steps.ai_assessment.output contains '**Verdict:** `genuine`' }}"
         steps:
           - name: tag_genuine
             type: kibana.request

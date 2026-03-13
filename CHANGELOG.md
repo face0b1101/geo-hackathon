@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-03-13
+
+### Changed
+
+- **Hijack assessment output format improved** — agent instructions now specify a structured markdown template with a title heading (`## Squawk 7500 Assessment — {icao24} ({callsign})`), explicit Verdict/Confidence fields, a Reasoning section with 4–6 key-evidence bullets; workflow prompt, case comment, and routing condition updated to match
+- **Case comment simplified** — removed redundant `### AI Hijack Assessment` wrapper heading from the investigation workflow; the agent's own structured heading now serves as the case comment title
+- **Create-case workflow aligned** — `squawk-7500-create-case.yaml` comment and description templates updated to use the same structured format for consistency across automated and interactive paths
+
 ## [1.4.1] - 2026-03-12
 
 ### Changed
@@ -218,4 +226,5 @@ Kibana dashboards.
 [1.3.0]: https://github.com/face0b1101/adsb-demo/compare/v1.2.1...v1.3.0
 [1.4.0]: https://github.com/face0b1101/adsb-demo/compare/v1.3.0...v1.4.0
 [1.4.1]: https://github.com/face0b1101/adsb-demo/compare/v1.4.0...v1.4.1
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.4.1...HEAD
+[1.4.2]: https://github.com/face0b1101/adsb-demo/compare/v1.4.1...v1.4.2
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.4.2...HEAD

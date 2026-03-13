@@ -64,9 +64,12 @@ steps:
                 type: user
                 owner: observability
                 comment: |
-                  ### Hijack Assessment — {{ inputs.verdict | upcase }}
+                  ## Squawk 7500 Assessment — {{ inputs.icao24 }} ({{ inputs.callsign }})
 
+                  **Verdict:** `{{ inputs.verdict }}`
                   **Confidence:** {{ inputs.confidence }}
+
+                  ### Reasoning
 
                   {{ inputs.reasoning }}
     else:
@@ -86,11 +89,12 @@ steps:
             {{ inputs.callsign }}
             ({{ inputs.icao24 }})
           description: |
-            ### Hijack Assessment — {{ inputs.verdict | upcase }}
+            ## Squawk 7500 Assessment — {{ inputs.icao24 }} ({{ inputs.callsign }})
 
-            **Aircraft:** {{ inputs.icao24 }}
-            **Callsign:** {{ inputs.callsign }}
+            **Verdict:** `{{ inputs.verdict }}`
             **Confidence:** {{ inputs.confidence }}
+
+            ### Reasoning
 
             {{ inputs.reasoning }}
           tags:
