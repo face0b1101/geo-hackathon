@@ -361,6 +361,13 @@ curl -XPUT -u "${LS_API_USER}:${LS_API_PW}" \
   'localhost:9600/_node/logging/reset?pretty'
 ```
 
+## Known Issues
+
+| #   | Summary                                                             | Upstream                                                                 |
+| --- | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1   | Workflows API `lastExecution` always returns `null` after execution | [elastic/kibana#257744](https://github.com/elastic/kibana/issues/257744) |
+| 2   | Cases `_find` API `tags` parameter uses OR logic with no AND option | [elastic/kibana#257743](https://github.com/elastic/kibana/issues/257743) |
+
 ## Data Source and Attribution
 
 Flight tracking data is provided by [The OpenSky Network](https://opensky-network.org).

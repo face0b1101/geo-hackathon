@@ -12,32 +12,32 @@ ______________________________________________________________________
 - **Visualisation**: Kibana (dashboards, data views)
 - **Setup automation**: Bash (`setup.sh`)
 
-| Command                          | Purpose                                                                  |
-| -------------------------------- | ------------------------------------------------------------------------ |
-| `cp .env.example .env`           | Create local environment config                                          |
-| `make setup`                     | Create ES indices, enrich policy, ingest pipeline, import Kibana objects |
-| `make setup-no-service-user`     | Run full setup without service user (actions attributed to .env API key) |
-| `make deploy-ilm`                | Deploy ES ILM policy only (skipped on Serverless)                        |
-| `make deploy-indices`            | Deploy ES index templates and data streams only                          |
-| `make deploy-enrich`             | Deploy ES enrich policies only                                           |
-| `make deploy-pipelines`          | Deploy ES ingest pipelines only                                          |
-| `make deploy-kibana`             | Deploy Kibana saved objects (dashboards, data views) only                |
-| `make deploy-workflows`          | Deploy Kibana workflows only                                             |
-| `make deploy-agents`             | Deploy Kibana AI agents only                                             |
-| `make deploy-es`                 | Deploy all ES resources (ilm + indices + enrich + pipelines)             |
-| `make deploy-ai`                 | Deploy AI layer (workflows + agents)                                     |
-| `make redeploy`                  | Re-deploy all resources (force overwrite)                                |
-| `make up`                        | Start Logstash (all 4 pipelines)                                         |
-| `make down`                      | Stop Logstash                                                            |
-| `make logs`                      | Tail Logstash logs                                                       |
-| `make restart`                   | Restart Logstash after config changes                                    |
-| `make status`                    | Show Logstash pipeline status                                            |
-| `make clean`                     | Stop Logstash and remove volumes                                         |
-| `make validate`                  | Validate Docker Compose config                                           |
-| `make health`                    | Check Elasticsearch cluster health                                       |
-| `make ps`                        | Show running containers                                                  |
-| `make shell`                     | Open a shell inside the Logstash container                               |
-| `make help`                      | List all available targets (grouped)                                     |
+| Command                      | Purpose                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `cp .env.example .env`       | Create local environment config                                          |
+| `make setup`                 | Create ES indices, enrich policy, ingest pipeline, import Kibana objects |
+| `make setup-no-service-user` | Run full setup without service user (actions attributed to .env API key) |
+| `make deploy-ilm`            | Deploy ES ILM policy only (skipped on Serverless)                        |
+| `make deploy-indices`        | Deploy ES index templates and data streams only                          |
+| `make deploy-enrich`         | Deploy ES enrich policies only                                           |
+| `make deploy-pipelines`      | Deploy ES ingest pipelines only                                          |
+| `make deploy-kibana`         | Deploy Kibana saved objects (dashboards, data views) only                |
+| `make deploy-workflows`      | Deploy Kibana workflows only                                             |
+| `make deploy-agents`         | Deploy Kibana AI agents only                                             |
+| `make deploy-es`             | Deploy all ES resources (ilm + indices + enrich + pipelines)             |
+| `make deploy-ai`             | Deploy AI layer (workflows + agents)                                     |
+| `make redeploy`              | Re-deploy all resources (force overwrite)                                |
+| `make up`                    | Start Logstash (all 4 pipelines)                                         |
+| `make down`                  | Stop Logstash                                                            |
+| `make logs`                  | Tail Logstash logs                                                       |
+| `make restart`               | Restart Logstash after config changes                                    |
+| `make status`                | Show Logstash pipeline status                                            |
+| `make clean`                 | Stop Logstash and remove volumes                                         |
+| `make validate`              | Validate Docker Compose config                                           |
+| `make health`                | Check Elasticsearch cluster health                                       |
+| `make ps`                    | Show running containers                                                  |
+| `make shell`                 | Open a shell inside the Logstash container                               |
+| `make help`                  | List all available targets (grouped)                                     |
 
 Any deploy target accepts `FORCE=1` to overwrite existing resources, e.g. `make deploy-agents FORCE=1`.
 
@@ -169,13 +169,13 @@ curl -s -X POST "${KB_BASE}/api/agent_builder/converse" \
 
 Some workflows trigger real external actions when run:
 
-| Workflow | Side effects |
-| --- | --- |
-| `adsb-aggregate-stats` | None (read-only ES query) |
-| `daily-flight-briefing` | Sends Slack message, invokes AI agent |
-| `squawk-7500-enrich` | External HTTP calls (adsbdb, adsb.lol, GNews) |
-| `squawk-7500-hijack-investigation` | Creates Kibana case, may send Slack |
-| `squawk-7500-create-case` | Creates or updates a Kibana case |
+| Workflow                           | Side effects                                  |
+| ---------------------------------- | --------------------------------------------- |
+| `adsb-aggregate-stats`             | None (read-only ES query)                     |
+| `daily-flight-briefing`            | Sends Slack message, invokes AI agent         |
+| `squawk-7500-enrich`               | External HTTP calls (adsbdb, adsb.lol, GNews) |
+| `squawk-7500-hijack-investigation` | Creates Kibana case, may send Slack           |
+| `squawk-7500-create-case`          | Creates or updates a Kibana case              |
 
 Agent converse calls may invoke workflow tools and incur LLM costs.
 
@@ -185,8 +185,8 @@ ______________________________________________________________________
 
 Gotchas discovered during development that affect how workflows, alerting, and cases interact.
 
-1. **`lastExecution` on the Workflows API is always `null`** — after an alert triggers a workflow, querying `GET /api/workflows/<id>` returns `lastExecution: null` even when the workflow has executed successfully. Use the Kibana event log (`.kibana-event-log-*`) or an `elasticsearch.index` canary step to verify execution.
-2. **Kibana Cases `_find` `tags` parameter uses OR logic** — passing `?tags=foo&tags=bar` matches cases with tag `foo` **or** tag `bar`, not both. Use a single unique tag (e.g. `icao24:<value>`) for deduplication queries instead of combining multiple tags.
+1. **`lastExecution` on the Workflows API is always `null`** ([elastic/kibana#257744](https://github.com/elastic/kibana/issues/257744)) — after an alert triggers a workflow, querying `GET /api/workflows/<id>` returns `lastExecution: null` even when the workflow has executed successfully. Use the Kibana event log (`.kibana-event-log-*`) or an `elasticsearch.index` canary step to verify execution.
+2. **Kibana Cases `_find` `tags` parameter uses OR logic** ([elastic/kibana#257743](https://github.com/elastic/kibana/issues/257743)) — passing `?tags=foo&tags=bar` matches cases with tag `foo` **or** tag `bar`, not both. Use a single unique tag (e.g. `icao24:<value>`) for deduplication queries instead of combining multiple tags.
 3. **`.workflows` system connector in alert rules** — the connector works when placed in the rule's `actions` array via the public API, but `group` and `frequency` fields are silently stripped. The public API does not support the `system_actions` field (returns 400). The action still fires correctly on each alert evaluation that meets the threshold.
 4. **Workflow `outputs` section ignored on Stack 9.3.x** — the `outputs` top-level key is accepted in workflow YAML but does not populate the execution-level `output` field on Cloud Hosted / Elastic Stack 9.3.x. The feature works on Elastic Cloud Serverless. Workflow tools called by agents receive `output: null`; agents fall back to direct ES queries. The four agent-tool workflows (`squawk-7500-enrich`, `adsb-aggregate-stats`, `hijack-cases-summary`, `squawk-7500-create-case`) have `outputs` sections ready — they will activate once the Stack runtime implements the feature.
 

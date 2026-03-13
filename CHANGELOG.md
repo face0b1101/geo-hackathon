@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-03-13
+
+### Removed
+
+- **Bug report working docs** (`.github/bug-reports/`) — moved to upstream Kibana issues; local copies no longer needed
+
+### Changed
+
+- **Known Quirks** in `AGENTS.md` — linked items 1 and 2 to upstream issues ([elastic/kibana#257744](https://github.com/elastic/kibana/issues/257744), [elastic/kibana#257743](https://github.com/elastic/kibana/issues/257743))
+- **README** — added Known Issues section linking upstream Kibana bug reports
+
 ## [1.4.4] - 2026-03-13
 
 ### Added
