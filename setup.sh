@@ -779,6 +779,15 @@ setup_agents() {
 # ---------------------------------------------------------------------------
 
 setup_workflows() {
+  # --- Extract dashboard IDs from ndjson (used in workflow placeholders + alert rule) ---
+  local DASHBOARD_WORLD_OVERVIEW_ID DASHBOARD_AIRCRAFT_DETAIL_ID
+  DASHBOARD_WORLD_OVERVIEW_ID=$(jq -r \
+    'select(.type == "dashboard" and .attributes.title == "Aircraft World Overview") | .id' \
+    elasticsearch/kibana/adsb-saved-objects.ndjson | head -1)
+  DASHBOARD_AIRCRAFT_DETAIL_ID=$(jq -r \
+    'select(.type == "dashboard" and .attributes.title == "Aircraft Detail") | .id' \
+    elasticsearch/kibana/adsb-saved-objects.ndjson | head -1)
+
   # --- Create Slack connector (conditional) ---
   step_label "Configuring Slack connector"
 
@@ -877,7 +886,7 @@ setup_workflows() {
   if [[ "$rule_needs_create" == "true" ]]; then
     local rule_payload
     local esql_query='FROM demos-aircraft-adsb | WHERE squawk == "7500" | KEEP @timestamp, icao24, callsign, squawk, origin_country, latitude, longitude, baro_altitude, velocity, true_track, vertical_rate, on_ground, geo_altitude | LIMIT 10'
-    rule_payload=$(jq -n --arg esql "$esql_query" --arg wf_id "$hijack_wf_id_for_rule" '{
+    rule_payload=$(jq -n --arg esql "$esql_query" --arg wf_id "$hijack_wf_id_for_rule" --arg dash_id "$DASHBOARD_AIRCRAFT_DETAIL_ID" '{
       name: "Squawk 7500 \u2014 Hijack Detection",
       rule_type_id: ".es-query",
       consumer: "observability",
@@ -897,7 +906,7 @@ setup_workflows() {
       },
       artifacts: {
         dashboards: [
-          {id: "ce6e34c0-ae6d-11ec-9a01-6da5271d9a1d"}
+          {id: $dash_id}
         ]
       },
       actions: (if $wf_id != "" then [
@@ -944,6 +953,8 @@ setup_workflows() {
     -e "s|__KB_ENDPOINT__|${KB_BASE}|g" \
     -e "s|__SPACE_PREFIX__|${_space_prefix}|g" \
     -e "s|__SLACK_CONNECTOR_ID__|${SLACK_CONNECTOR_ID:-}|g" \
+    -e "s|__DASHBOARD_WORLD_OVERVIEW_ID__|${DASHBOARD_WORLD_OVERVIEW_ID}|g" \
+    -e "s|__DASHBOARD_AIRCRAFT_DETAIL_ID__|${DASHBOARD_AIRCRAFT_DETAIL_ID}|g" \
     "elasticsearch/workflows/daily-flight-briefing.yaml")
   _wf_name=$(echo "$_wf_yaml_content" | grep -m1 '^name:' | sed 's/^name:[[:space:]]*//')
   workflow_yaml=$(echo "$_wf_yaml_content" | jq -Rs '{yaml: .}')
@@ -1032,6 +1043,8 @@ setup_workflows() {
     -e "s|__GNEWS_API_KEY__|${GNEWS_API_KEY:-}|g" \
     -e "s|__SPACE_PREFIX__|${_space_prefix}|g" \
     -e "s|__SLACK_CONNECTOR_ID__|${SLACK_CONNECTOR_ID:-}|g" \
+    -e "s|__DASHBOARD_WORLD_OVERVIEW_ID__|${DASHBOARD_WORLD_OVERVIEW_ID}|g" \
+    -e "s|__DASHBOARD_AIRCRAFT_DETAIL_ID__|${DASHBOARD_AIRCRAFT_DETAIL_ID}|g" \
     "elasticsearch/workflows/squawk-7500-hijack-investigation.yaml")
   _hijack_name=$(echo "$_hijack_yaml_content" | grep -m1 '^name:' | sed 's/^name:[[:space:]]*//')
   hijack_yaml=$(echo "$_hijack_yaml_content" | jq -Rs '{yaml: .}')

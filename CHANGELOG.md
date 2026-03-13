@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-03-12
+
+### Changed
+
+- **Dashboard IDs parameterised in workflows** — `daily-flight-briefing.yaml` and `squawk-7500-hijack-investigation.yaml` now use `__DASHBOARD_WORLD_OVERVIEW_ID__` and `__DASHBOARD_AIRCRAFT_DETAIL_ID__` placeholders instead of hardcoded UUIDs; `setup.sh` extracts the real IDs from the ndjson export at deploy time using jq, matching the existing pattern for `__SLACK_CONNECTOR_ID__`
+- **Alert rule dashboard artifact dynamised** — the squawk 7500 alerting rule in `setup.sh` now uses the extracted `DASHBOARD_AIRCRAFT_DETAIL_ID` variable instead of a hardcoded UUID
+
+### Fixed
+
+- **Hardcoded Elastic Cloud URL in saved objects** — the Aircraft Detail dashboard's "Return to World Overview" markdown panel used a full `https://adsb-demo-fe9ed3.kb.eu-west-1.aws.elastic.cloud/...` URL; replaced with a relative `/app/dashboards#/view/...` path so the link works on any deployment
+
 ## [1.4.0] - 2026-03-12
 
 ### Changed
@@ -205,4 +216,6 @@ Kibana dashboards.
 [1.2.0]: https://github.com/face0b1101/adsb-demo/compare/v1.1.0...v1.2.0
 [1.2.1]: https://github.com/face0b1101/adsb-demo/compare/v1.2.0...v1.2.1
 [1.3.0]: https://github.com/face0b1101/adsb-demo/compare/v1.2.1...v1.3.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.3.0...HEAD
+[1.4.0]: https://github.com/face0b1101/adsb-demo/compare/v1.3.0...v1.4.0
+[1.4.1]: https://github.com/face0b1101/adsb-demo/compare/v1.4.0...v1.4.1
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.4.1...HEAD
