@@ -124,7 +124,7 @@ declare -A GROUP_STEPS=(
   [pipelines]=2
   [kibana]=1
   [agents]=3
-  [workflows]=12
+  [workflows]=13
 )
 
 TOTAL=0
@@ -837,6 +837,26 @@ setup_workflows() {
   # --- Create squawk 7500 alerting rule ---
   step_label "Creating squawk 7500 alerting rule"
 
+  # Pre-resolve the hijack workflow ID so we can wire the action at create time
+  local hijack_wf_id_for_rule=""
+  local _pre_wf_tmp
+  _pre_wf_tmp=$(mktemp)
+  if curl -s -w '%{http_code}' -o "$_pre_wf_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -H "kbn-xsrf: true" \
+    -H "x-elastic-internal-origin: kibana" \
+    -H "Content-Type: application/json" \
+    -X POST "$KB_BASE/api/workflows/search" \
+    -d '{"query":"Squawk 7500 Hijack Investigation"}' 2>/dev/null | grep -q '^2'; then
+    hijack_wf_id_for_rule=$(jq -r '(.workflows // .results // [])[] | select(.name == "Squawk 7500 Hijack Investigation") | .id' < "$_pre_wf_tmp" 2>/dev/null | head -1 || true)
+  fi
+  rm -f "$_pre_wf_tmp"
+  if [[ -n "$hijack_wf_id_for_rule" ]]; then
+    echo "  Resolved workflow ID for action: $hijack_wf_id_for_rule"
+  else
+    echo "  Workflow not yet deployed — rule will be created without workflow action"
+  fi
+
   local rule_id="7500a1e7-cafe-4bee-b500-deadbeef7500"
   local rule_needs_create=true
 
@@ -856,30 +876,42 @@ setup_workflows() {
 
   if [[ "$rule_needs_create" == "true" ]]; then
     local rule_payload
-    rule_payload=$(jq -n --argjson es_query '{"query":{"term":{"squawk":"7500"}}}' '{
+    local esql_query='FROM demos-aircraft-adsb | WHERE squawk == "7500" | KEEP @timestamp, icao24, callsign, squawk, origin_country, latitude, longitude, baro_altitude, velocity, true_track, vertical_rate, on_ground, geo_altitude | LIMIT 10'
+    rule_payload=$(jq -n --arg esql "$esql_query" --arg wf_id "$hijack_wf_id_for_rule" '{
       name: "Squawk 7500 \u2014 Hijack Detection",
       rule_type_id: ".es-query",
-      consumer: "stackAlerts",
+      consumer: "observability",
       enabled: true,
       schedule: {interval: "5m"},
       tags: ["adsb","squawk-7500","hijack"],
       params: {
-        searchType: "esQuery",
-        esQuery: ($es_query | tostring),
-        index: ["demos-aircraft-adsb"],
+        searchType: "esqlQuery",
+        esqlQuery: {esql: $esql},
         timeField: "@timestamp",
         threshold: [0],
         thresholdComparator: ">",
         timeWindowSize: 5,
         timeWindowUnit: "m",
-        size: 10
+        size: 10,
+        groupBy: "row"
       },
       artifacts: {
         dashboards: [
           {id: "ce6e34c0-ae6d-11ec-9a01-6da5271d9a1d"}
         ]
       },
-      actions: []
+      actions: (if $wf_id != "" then [
+        {
+          id: "system-connector-.workflows",
+          params: {
+            subActionParams: {
+              workflowId: $wf_id,
+              summaryMode: false
+            },
+            subAction: "run"
+          }
+        }
+      ] else [] end)
     }')
 
     local rule_tmp rule_http
@@ -1076,6 +1108,58 @@ setup_workflows() {
 
     echo "  OK (HTTP $hijack_http) — workflow ID: ${hijack_wf_id:-unknown}"
     rm -f "$hijack_tmp"
+  fi
+
+  # --- Link squawk 7500 alert rule → hijack investigation workflow ---
+  step_label "Linking alert rule to hijack investigation workflow"
+
+  local _resolved_hijack_wf_id="${hijack_wf_id:-$existing_hijack_id}"
+  if [[ -z "$_resolved_hijack_wf_id" ]]; then
+    echo "  Skipped — workflow ID not available (workflow deployment may have been skipped)"
+  elif [[ -n "$hijack_wf_id_for_rule" ]]; then
+    echo "  Already wired at rule creation time — no manual step needed"
+  else
+    # Workflow was deployed after rule creation; add action via API update
+    local _link_payload
+    _link_payload=$(jq -n --arg wf_id "$_resolved_hijack_wf_id" '{
+      actions: [
+        {
+          id: "system-connector-.workflows",
+          params: {
+            subActionParams: { workflowId: $wf_id, summaryMode: false },
+            subAction: "run"
+          }
+        }
+      ]
+    }')
+    local _link_http
+    _link_http=$(curl -s -w '%{http_code}' -o /dev/null \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -H "kbn-xsrf: true" \
+      -H "Content-Type: application/json" \
+      -X PUT "$KB_BASE/api/alerting/rule/$rule_id" \
+      -d "$_link_payload")
+    if [[ "$_link_http" -ge 200 && "$_link_http" -lt 300 ]]; then
+      echo "  OK — workflow action added to rule via API"
+    else
+      local _rule_url="${KB_BASE}/app/management/insightsAndAlerting/triggersActions/rules/edit/${rule_id}"
+      echo "  WARNING (HTTP $_link_http): Could not add action via API." >&2
+      echo ""
+      echo "  ┌──────────────────────────────────────────────────────────────┐"
+      echo "  │  MANUAL STEP REQUIRED                                       │"
+      echo "  │                                                              │"
+      echo "  │  Connect the alert rule to the workflow in the Kibana UI:    │"
+      echo "  │                                                              │"
+      echo "  │  1. Open the rule:                                           │"
+      echo "  │     ${_rule_url}"
+      echo "  │  2. Under Actions, click 'Add action'                        │"
+      echo "  │  3. Select 'Workflows'                                       │"
+      echo "  │  4. Choose 'Squawk 7500 Hijack Investigation'                │"
+      echo "  │  5. Set frequency to 'Run per alert'                         │"
+      echo "  │  6. Save                                                     │"
+      echo "  └──────────────────────────────────────────────────────────────┘"
+      echo ""
+    fi
   fi
 
   # --- Deploy squawk 7500 enrich workflow ---

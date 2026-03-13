@@ -51,13 +51,25 @@ Make sure you have an [LLM configured in Kibana](https://www.elastic.co/docs/exp
 
 ### Workflows
 
-The setup script deploys a **Daily Flight Briefing** workflow via [Elastic Workflows](https://www.elastic.co/docs/explore-analyze/workflows) (Preview, Stack 9.3+). The workflow runs automatically at 08:00 Europe/London each day and:
+The setup script deploys several [Elastic Workflows](https://www.elastic.co/docs/explore-analyze/workflows) (Preview, Stack 9.3+):
+
+**Daily Flight Briefing** — runs automatically at 08:00 Europe/London each day:
 
 1. Aggregates 24 hours of ADS-B data — unique aircraft, busiest airports, top origin countries, regional traffic by UN subregion, activity breakdown, and emergency squawk codes (7500/7600/7700)
 2. Invokes the **ADS-B Daily Briefing Analyst** agent to generate a natural-language briefing from the aggregation results
 3. Posts the briefing to a Slack channel (if a Slack connector is configured)
 
-A dedicated **ADS-B Daily Briefing Analyst** agent is also deployed. You can ask it to trigger the briefing on demand, review results, or discuss findings.
+**Squawk 7500 Hijack Investigation** — triggered automatically by an ES|QL alert rule when an aircraft transmits squawk code 7500 (hijack). The alert uses per-row grouping so each aircraft gets its own alert and workflow execution. The workflow:
+
+1. Deduplicates against existing open Kibana Cases (one investigation per aircraft)
+2. Creates a new case with aircraft details and attaches the triggering alert
+3. Enriches with flight history, aircraft registry (adsbdb), live position (adsb.lol), and news articles (GNews)
+4. Invokes the **ADS-B Hijack Assessment** agent for AI-powered false-positive analysis
+5. Routes based on verdict — Slack notification for genuine threats, auto-close for false positives
+
+Supporting workflows (`squawk-7500-enrich`, `squawk-7500-create-case`, `hijack-cases-summary`, `adsb-aggregate-stats`) are deployed as agent tools.
+
+> **Observability features** — This demo leverages Elastic Observability capabilities including the Observability solution view (Kibana space), Cases (`owner: observability`), and alerting (`consumer: observability`). The full experience requires a deployment that supports these features — see the [deployment comparison table](#getting-started-with-elasticsearch).
 
 **Prerequisites for workflows and agents:**
 
@@ -271,7 +283,8 @@ make setup FORCE=1
 ├── elasticsearch/
 │   ├── agents/
 │   │   ├── adsb-agent.json                           # AI agent definition (Aircraft ADS-B Tracking Specialist)
-│   │   └── adsb-daily-briefing-agent.json            # AI agent definition (Daily Briefing Analyst)
+│   │   ├── adsb-daily-briefing-agent.json            # AI agent definition (Daily Briefing Analyst)
+│   │   └── adsb-hijack-assessment-agent.json         # AI agent definition (Hijack Assessment)
 │   ├── enrich/
 │   │   ├── adsb-geo-enrich-policy.json               # Country geo-shape enrich policy
 │   │   └── adsb-airport-enrich-policy.json           # Airport proximity enrich policy
@@ -285,7 +298,11 @@ make setup FORCE=1
 │   │   └── adsb-ingest-pipeline.json                 # Ingest pipeline (enrich + trim)
 │   └── workflows/
 │       ├── adsb-aggregate-stats.yaml                 # Workflow: 24h ADS-B aggregation (agent tool)
-│       └── daily-flight-briefing.yaml                # Workflow: daily AI-powered flight briefing
+│       ├── daily-flight-briefing.yaml                # Workflow: daily AI-powered flight briefing
+│       ├── squawk-7500-hijack-investigation.yaml     # Workflow: alert-triggered hijack investigation
+│       ├── squawk-7500-enrich.yaml                   # Workflow: hijack enrichment (agent tool)
+│       ├── squawk-7500-create-case.yaml              # Workflow: case creation/update (agent tool)
+│       └── hijack-cases-summary.yaml                 # Workflow: hijack cases summary (agent tool)
 └── logstash/
     ├── config/
     │   ├── logstash.yml                              # Logstash node settings

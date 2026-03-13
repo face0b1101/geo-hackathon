@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-12
+
+### Changed
+
+- **Alert rule switched from DSL to ES|QL** — the squawk 7500 hijack detection rule now uses `searchType: "esqlQuery"` with per-row grouping (`groupBy: "row"`), providing individual alerts per aircraft with full field context in `event.alerts[0].kibana.alert.grouping`
+- **Alert rule consumer switched to `observability`** — alerts now land in `.alerts-observability` indices, consistent with `owner: observability` on Kibana Cases
+- **Hijack investigation workflow refactored** — consumes alert context directly (`event.alerts[0].kibana.alert.grouping.*`) instead of re-querying Elasticsearch; removed redundant `search_squawk_7500` step and `foreach` wrapper; added `fetch_enriched_doc` step for geo and airport fields not in the ES|QL `KEEP` clause
+- **`.workflows` system connector wired at rule creation** — `setup.sh` now pre-resolves the workflow ID and includes the `.workflows` action in the alert rule payload, with fallback manual-linking instructions if the workflow isn't deployed yet
+
+### Fixed
+
+- **Case deduplication logic** — Kibana Cases `_find` API treats multiple `tags` query parameters as an OR condition; switched from `tags=icao24:...&tags=squawk-7500` to a single `tags=icao24:...` filter so only the aircraft-specific tag is used for dedup
+
 ## [1.3.0] - 2026-03-10
 
 ### Added

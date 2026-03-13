@@ -181,6 +181,16 @@ Agent converse calls may invoke workflow tools and incur LLM costs.
 
 ______________________________________________________________________
 
+## Known Quirks
+
+Gotchas discovered during development that affect how workflows, alerting, and cases interact.
+
+1. **`lastExecution` on the Workflows API is always `null`** — after an alert triggers a workflow, querying `GET /api/workflows/<id>` returns `lastExecution: null` even when the workflow has executed successfully. Use the Kibana event log (`.kibana-event-log-*`) or an `elasticsearch.index` canary step to verify execution.
+2. **Kibana Cases `_find` `tags` parameter uses OR logic** — passing `?tags=foo&tags=bar` matches cases with tag `foo` **or** tag `bar`, not both. Use a single unique tag (e.g. `icao24:<value>`) for deduplication queries instead of combining multiple tags.
+3. **`.workflows` system connector in alert rules** — the connector works when placed in the rule's `actions` array via the public API, but `group` and `frequency` fields are silently stripped. The public API does not support the `system_actions` field (returns 400). The action still fires correctly on each alert evaluation that meets the threshold.
+
+______________________________________________________________________
+
 ## AI Assistant Operating Rules
 
 Concise policy reference for all coding agents touching this repository. Keep responses factual and avoid speculative language.
