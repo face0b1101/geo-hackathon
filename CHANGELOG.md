@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-03-18
+
+### Added
+
+- **`LS_CENTRALIZED_MGMT` env var** — toggle for Logstash centralised pipeline management; when `true`, Logstash fetches pipeline configs from Elasticsearch instead of local files; defaults to `false` (local file mode)
+- **`silence_errors_in_log`** on all four pipeline Elasticsearch outputs — suppresses `version_conflict_engine_exception` (409) log noise from duplicate documents
+- **Pipeline design documentation** — all four quadrant pipeline configs now include a block comment explaining the `heartbeat` → OAuth2 token → API call polling pattern and why `http_poller` cannot be used; README gains a new "Pipeline Design — Polling with OAuth2" section with an ASCII flow diagram
+
+### Changed
+
+- **README** — "Centralised Pipeline Management" section rewritten to use `LS_CENTRALIZED_MGMT` env var toggle instead of manual `logstash.yml` edits; Quick Start `.env` example updated for OAuth2 credentials (`OPENSKY_API_CLIENT_ID` / `OPENSKY_API_CLIENT_SECRET`)
+
 ## [1.5.0] - 2026-03-18
 
 ### Changed
@@ -278,4 +290,5 @@ Kibana dashboards.
 [1.4.4]: https://github.com/face0b1101/adsb-demo/compare/v1.4.3...v1.4.4
 [1.4.5]: https://github.com/face0b1101/adsb-demo/compare/v1.4.4...v1.4.5
 [1.5.0]: https://github.com/face0b1101/adsb-demo/compare/v1.4.5...v1.5.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.5.0...HEAD
+[1.5.1]: https://github.com/face0b1101/adsb-demo/compare/v1.5.0...v1.5.1
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.5.1...HEAD

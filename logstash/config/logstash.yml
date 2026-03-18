@@ -14,3 +14,12 @@ api.auth.basic.password: "${LS_API_PW}"
 
 monitoring.enabled: ${LS_MONITORING_ENABLED}
 monitoring.cluster_uuid: "${LS_MONITORING_CLUSTER_UUID}"
+
+xpack.management.enabled: ${LS_CENTRALIZED_MGMT:false}
+xpack.management.elasticsearch.hosts: ["${ES_ENDPOINT}"]
+xpack.management.elasticsearch.api_key: "${ES_API_KEY_ID}:${ES_API_KEY}"
+xpack.management.pipeline.id:
+  - adsb-q1
+  - adsb-q2
+  - adsb-q3
+  - adsb-q4

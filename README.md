@@ -42,6 +42,34 @@ Each pipeline covers one quadrant of the globe. Splitting the world into four sm
 
 All four pipelines write to the same `demos-aircraft-adsb` data stream. An ingest pipeline enriches each document with country/region metadata and nearest airport proximity via geo-shape enrich policies.
 
+### Pipeline Design — Polling with OAuth2
+
+The OpenSky API requires an OAuth2 bearer token (client-credentials grant via Keycloak). Logstash's `http_poller` input plugin can poll a URL on a schedule but only supports basic auth and static headers — it cannot perform an OAuth2 token exchange before each request, so it won't work here.
+
+The pipelines work around this by chaining a `heartbeat` input with two `http` filter plugins:
+
+```
+heartbeat (every 360 s)
+  │
+  ▼
+http filter ── POST /token ──▶ Keycloak (OpenSky)
+  │                              │
+  │  [@metadata][token_response] ◀─ { access_token: "…" }
+  │
+  ▼
+http filter ── GET /states/all ──▶ OpenSky REST API
+  │            Authorization: Bearer <token>
+  │
+  ▼
+split / mutate / date ──▶ elasticsearch output
+```
+
+1. **`heartbeat` input** — generates a synthetic event every 360 seconds, acting as the poll timer.
+2. **`http` filter (token)** — performs an OAuth2 client-credentials grant against the OpenSky Keycloak endpoint. The access token is stored in `[@metadata]` so it is ephemeral and never indexed.
+3. **`http` filter (API)** — calls the OpenSky `/states/all` endpoint with the bearer token from step 2 interpolated into the `Authorization` header. The bounding-box query parameters differ per quadrant.
+
+If either HTTP call fails, the event is tagged `_httprequestfailure` and dropped before reaching the output. This pattern is reusable for any Logstash pipeline that needs to poll an OAuth2-protected REST API on a schedule.
+
 ### AI Agent
 
 The setup script deploys an **Aircraft ADS-B Tracking Specialist** agent via the Kibana Agent Builder. The agent can answer natural-language questions about flight data - locate aircraft by callsign or ICAO24 address, query positions over geographic regions, analyse altitude and speed patterns, and aggregate flights by country or region.
@@ -171,8 +199,8 @@ ES_API_KEY_ENCODED=VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeWFrdzl0dk5udw==
 KB_ENDPOINT=https://my-deployment.kb.us-central1.gcp.cloud.es.io
 KB_SPACE=adsb              # optional — deploy into a named Kibana space
 
-OPENSKY_API_USER=your_opensky_username
-OPENSKY_API_PW=your_opensky_password
+OPENSKY_API_CLIENT_ID=your_opensky_client_id
+OPENSKY_API_CLIENT_SECRET=your_opensky_client_secret
 ```
 
 > **Kibana Spaces** — Set `KB_SPACE` to deploy all Kibana resources (dashboards, agents, workflows) into a dedicated space. `setup.sh` creates the space automatically with the Observability solution view. Leave `KB_SPACE` empty to use the default space.
@@ -319,29 +347,27 @@ make setup FORCE=1
 
 ## Optional: Centralised Pipeline Management
 
-Instead of managing pipeline `.conf` files on disk, you can use Kibana's [Centralised Pipeline Management](https://www.elastic.co/docs/reference/logstash/configuring-centralized-pipelines) (CPM) to create, edit, and delete pipelines from the UI. Pipelines are stored in Elasticsearch and pulled by Logstash at the configured polling interval.
+Instead of managing pipeline `.conf` files on disk, you can use Kibana's [Centralised Pipeline Management](https://www.elastic.co/docs/reference/logstash/configuring-centralized-pipelines) (CPM) to create, edit, and delete pipelines from the UI. Pipelines are stored in Elasticsearch and pulled by Logstash automatically.
 
-### 1. Add management settings to `logstash.yml`
+This repo ships with a toggle — set one environment variable and Logstash switches from local file mode to centralised mode.
 
-```yaml
-xpack.management.enabled: true
-xpack.management.elasticsearch.hosts: ["${ES_ENDPOINT}"]
-xpack.management.elasticsearch.api_key: "${ES_API_KEY_ID}:${ES_API_KEY}"
-xpack.management.pipeline.id: ["adsb-q1", "adsb-q2", "adsb-q3", "adsb-q4"]
-xpack.management.elasticsearch.pipeline.poll_interval: 5s
+### 1. Enable in `.env`
+
+```sh
+LS_CENTRALIZED_MGMT=true
 ```
+
+When `true`, Logstash fetches pipeline configs from Elasticsearch for the four quadrant pipeline IDs (`adsb-q1` through `adsb-q4`). The local `pipelines.yml` and `.conf` files are silently ignored for those IDs. When `false` (the default), Logstash reads from local files as normal.
 
 ### 2. Create pipelines in Kibana
 
 1. Go to **Management > Ingest > Logstash Pipelines**.
-2. Create a pipeline for each ID (`adsb-q1` through `adsb-q4`) and paste the corresponding config from the pipeline files in `logstash/pipeline/`.
-
-Once CPM is enabled, Logstash ignores local `.conf` files for managed pipeline IDs. You can run some pipelines locally and others centrally as long as their IDs don't overlap.
+2. Create a pipeline for each ID (`adsb-q1` through `adsb-q4`) and paste the corresponding config from `logstash/pipeline/`.
 
 ### 3. Restart Logstash
 
 ```bash
-docker compose restart logstash
+make restart      # or: docker compose restart logstash
 ```
 
 ## Changing Log Level at Runtime
