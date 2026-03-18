@@ -1,7 +1,10 @@
 ---
 services:
   logstash:
-    image: docker.elastic.co/logstash/logstash:${ELASTIC_STACK_VERSION}
+    build:
+      context: ./logstash
+      args:
+        ELASTIC_STACK_VERSION: ${ELASTIC_STACK_VERSION}
     container_name: logstash
     restart: unless-stopped
     user: "1001"
@@ -24,6 +27,8 @@ services:
       ES_API_KEY: ${ES_API_KEY}
       OPENSKY_API_USER: ${OPENSKY_API_USER}
       OPENSKY_API_PW: ${OPENSKY_API_PW}
+      OPENSKY_API_CLIENT_ID: ${OPENSKY_API_CLIENT_ID}
+      OPENSKY_API_CLIENT_SECRET: ${OPENSKY_API_CLIENT_SECRET}
 
 
 volumes:

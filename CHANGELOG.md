@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-03-18
+
+### Changed
+
+- **OpenSky API auth migrated from Basic Auth to OAuth2** — OpenSky Network deprecated username/password authentication on 18 March 2026; all four quadrant pipelines (`adsb_q1`–`adsb_q4`) now use the OAuth2 client credentials flow via two inline `http` filter steps (token fetch + Bearer-authenticated API call)
+- **Pipeline input replaced** — `http_poller` input swapped for `heartbeat` input (360s interval) with HTTP calls moved to the filter stage, enabling the two-step OAuth2 flow
+- **Error resilience added** — drop guard (`_httprequestfailure` tag or missing `[message][states]`) prevents failed polls (429s, token errors, empty responses) from reaching the Elasticsearch output and triggering TSDS dimension errors
+- **Stale references cleaned up** — removed `http_poller_metadata` and `time` from split filter `remove_field`; removed commented-out `generator` input blocks from Q2–Q4
+
+### Added
+
+- **`logstash/Dockerfile`** — extends the stock Logstash image to install `logstash-filter-http` (not bundled by default)
+- **`OPENSKY_API_CLIENT_ID`** and **`OPENSKY_API_CLIENT_SECRET`** environment variables in `.env.example` and `docker-compose.yml`
+- **Docker Compose `build` context** — `docker-compose.yml` switched from `image:` to `build:` referencing the new Dockerfile with `ELASTIC_STACK_VERSION` as a build arg
+
 ## [1.4.5] - 2026-03-13
 
 ### Removed
@@ -261,4 +276,6 @@ Kibana dashboards.
 [1.4.2]: https://github.com/face0b1101/adsb-demo/compare/v1.4.1...v1.4.2
 [1.4.3]: https://github.com/face0b1101/adsb-demo/compare/v1.4.2...v1.4.3
 [1.4.4]: https://github.com/face0b1101/adsb-demo/compare/v1.4.3...v1.4.4
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.4.4...HEAD
+[1.4.5]: https://github.com/face0b1101/adsb-demo/compare/v1.4.4...v1.4.5
+[1.5.0]: https://github.com/face0b1101/adsb-demo/compare/v1.4.5...v1.5.0
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.5.0...HEAD
