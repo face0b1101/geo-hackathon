@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-03-19
+
+### Fixed
+
+- **Confidence custom field not populated on alert-triggered cases** — the `squawk-7500-hijack-investigation.yaml` workflow hardcoded `confidence: null` in both the `tag_genuine` and `tag_false_positive` PATCH steps, leaving the Confidence case custom field empty even though the value appeared in the AI assessment comment; replaced each single PATCH step with a nested `if`/`contains` chain that extracts the confidence level (`high`, `medium`, or `low`) from the agent's `**Confidence:**` output line, defaulting to `low` if no match is found; the chat-mode workflow (`squawk-7500-create-case.yaml`) was already correct as it receives confidence as a structured input
+
 ## [1.6.0] - 2026-03-19
 
 ### Added
@@ -314,4 +320,5 @@ Kibana dashboards.
 [1.5.0]: https://github.com/face0b1101/adsb-demo/compare/v1.4.5...v1.5.0
 [1.5.1]: https://github.com/face0b1101/adsb-demo/compare/v1.5.0...v1.5.1
 [1.6.0]: https://github.com/face0b1101/adsb-demo/compare/v1.5.1...v1.6.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.6.0...HEAD
+[1.6.1]: https://github.com/face0b1101/adsb-demo/compare/v1.6.0...v1.6.1
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.6.1...HEAD

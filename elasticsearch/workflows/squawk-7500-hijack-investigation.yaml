@@ -274,42 +274,114 @@ steps:
       # ----------------------------------------------------------------
       # 11. Route — Slack for genuine, tag for false positive
       #     Cases are never auto-closed; a human reviews and closes.
+      #
+      #     Confidence is extracted via nested contains checks because
+      #     ai.agent output is a plain string (not parsed as JSON).
+      #     Matches **Confidence:** `high` / `medium`, else defaults
+      #     to low. PATCH replaces the entire customFields array, so
+      #     all fields must be included in every PATCH body.
       # ----------------------------------------------------------------
       - name: route_triage
         type: if
         condition: "${{ steps.ai_assessment.output contains '**AI Triage Assessment:** `genuine`' }}"
         steps:
-          # PATCH replaces the entire customFields array, so all
-          # fields must be included to avoid losing values.
-          - name: tag_genuine
-            type: kibana.request
-            with:
-              method: PATCH
-              path: "__SPACE_PREFIX__/api/cases"
-              body:
-                cases:
-                  - id: "{{ steps.create_case.output.id }}"
-                    version: "{{ steps.refetch_case.output.version }}"
-                    tags:
-                      - "squawk-7500"
-                      - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
-                      - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
-                      - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
-                      - "auto-investigation"
-                      - "triage:genuine"
-                    customFields:
-                      - key: icao24
-                        type: text
-                        value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
-                      - key: callsign
-                        type: text
-                        value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
-                      - key: ai_triage_assessment
-                        type: text
-                        value: "genuine"
-                      - key: confidence
-                        type: text
-                        value: null
+          - name: confidence_genuine
+            type: if
+            condition: "${{ steps.ai_assessment.output contains '**Confidence:** `high`' }}"
+            steps:
+              - name: tag_genuine_high
+                type: kibana.request
+                with:
+                  method: PATCH
+                  path: "__SPACE_PREFIX__/api/cases"
+                  body:
+                    cases:
+                      - id: "{{ steps.create_case.output.id }}"
+                        version: "{{ steps.refetch_case.output.version }}"
+                        tags:
+                          - "squawk-7500"
+                          - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                          - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                          - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                          - "auto-investigation"
+                          - "triage:genuine"
+                        customFields:
+                          - key: icao24
+                            type: text
+                            value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                          - key: callsign
+                            type: text
+                            value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                          - key: ai_triage_assessment
+                            type: text
+                            value: "genuine"
+                          - key: confidence
+                            type: text
+                            value: "high"
+            else:
+              - name: confidence_genuine_not_high
+                type: if
+                condition: "${{ steps.ai_assessment.output contains '**Confidence:** `medium`' }}"
+                steps:
+                  - name: tag_genuine_medium
+                    type: kibana.request
+                    with:
+                      method: PATCH
+                      path: "__SPACE_PREFIX__/api/cases"
+                      body:
+                        cases:
+                          - id: "{{ steps.create_case.output.id }}"
+                            version: "{{ steps.refetch_case.output.version }}"
+                            tags:
+                              - "squawk-7500"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "auto-investigation"
+                              - "triage:genuine"
+                            customFields:
+                              - key: icao24
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - key: callsign
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - key: ai_triage_assessment
+                                type: text
+                                value: "genuine"
+                              - key: confidence
+                                type: text
+                                value: "medium"
+                else:
+                  - name: tag_genuine_low
+                    type: kibana.request
+                    with:
+                      method: PATCH
+                      path: "__SPACE_PREFIX__/api/cases"
+                      body:
+                        cases:
+                          - id: "{{ steps.create_case.output.id }}"
+                            version: "{{ steps.refetch_case.output.version }}"
+                            tags:
+                              - "squawk-7500"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "auto-investigation"
+                              - "triage:genuine"
+                            customFields:
+                              - key: icao24
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - key: callsign
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - key: ai_triage_assessment
+                                type: text
+                                value: "genuine"
+                              - key: confidence
+                                type: text
+                                value: "low"
           - name: notify_slack
             type: slack
             connector-id: "__SLACK_CONNECTOR_ID__"
@@ -330,34 +402,100 @@ steps:
             on-failure:
               continue: true
         else:
-          # PATCH replaces the entire customFields array, so all
-          # fields must be included to avoid losing values.
-          - name: tag_false_positive
-            type: kibana.request
-            with:
-              method: PATCH
-              path: "__SPACE_PREFIX__/api/cases"
-              body:
-                cases:
-                  - id: "{{ steps.create_case.output.id }}"
-                    version: "{{ steps.refetch_case.output.version }}"
-                    tags:
-                      - "squawk-7500"
-                      - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
-                      - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
-                      - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
-                      - "auto-investigation"
-                      - "triage:false_positive"
-                    customFields:
-                      - key: icao24
-                        type: text
-                        value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
-                      - key: callsign
-                        type: text
-                        value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
-                      - key: ai_triage_assessment
-                        type: text
-                        value: "false_positive"
-                      - key: confidence
-                        type: text
-                        value: null
+          - name: confidence_fp
+            type: if
+            condition: "${{ steps.ai_assessment.output contains '**Confidence:** `high`' }}"
+            steps:
+              - name: tag_fp_high
+                type: kibana.request
+                with:
+                  method: PATCH
+                  path: "__SPACE_PREFIX__/api/cases"
+                  body:
+                    cases:
+                      - id: "{{ steps.create_case.output.id }}"
+                        version: "{{ steps.refetch_case.output.version }}"
+                        tags:
+                          - "squawk-7500"
+                          - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                          - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                          - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                          - "auto-investigation"
+                          - "triage:false_positive"
+                        customFields:
+                          - key: icao24
+                            type: text
+                            value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                          - key: callsign
+                            type: text
+                            value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                          - key: ai_triage_assessment
+                            type: text
+                            value: "false_positive"
+                          - key: confidence
+                            type: text
+                            value: "high"
+            else:
+              - name: confidence_fp_not_high
+                type: if
+                condition: "${{ steps.ai_assessment.output contains '**Confidence:** `medium`' }}"
+                steps:
+                  - name: tag_fp_medium
+                    type: kibana.request
+                    with:
+                      method: PATCH
+                      path: "__SPACE_PREFIX__/api/cases"
+                      body:
+                        cases:
+                          - id: "{{ steps.create_case.output.id }}"
+                            version: "{{ steps.refetch_case.output.version }}"
+                            tags:
+                              - "squawk-7500"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "auto-investigation"
+                              - "triage:false_positive"
+                            customFields:
+                              - key: icao24
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - key: callsign
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - key: ai_triage_assessment
+                                type: text
+                                value: "false_positive"
+                              - key: confidence
+                                type: text
+                                value: "medium"
+                else:
+                  - name: tag_fp_low
+                    type: kibana.request
+                    with:
+                      method: PATCH
+                      path: "__SPACE_PREFIX__/api/cases"
+                      body:
+                        cases:
+                          - id: "{{ steps.create_case.output.id }}"
+                            version: "{{ steps.refetch_case.output.version }}"
+                            tags:
+                              - "squawk-7500"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - "auto-investigation"
+                              - "triage:false_positive"
+                            customFields:
+                              - key: icao24
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                              - key: callsign
+                                type: text
+                                value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                              - key: ai_triage_assessment
+                                type: text
+                                value: "false_positive"
+                              - key: confidence
+                                type: text
+                                value: "low"
