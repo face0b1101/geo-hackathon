@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-03-19
+
+### Changed
+
+- **Kibana saved objects re-exported** — picked up dashboard and data view changes from Kibana
+- **ICAO24 field URL changed** — data view link target updated from `opensky-network.org/aircraft-profile` to `planespotters.net/search` for better aircraft lookup
+- **Callsign field format simplified** — removed internal Kibana `parsedUrl` metadata; FlightAware URL template unchanged
+- **Aircraft Detail navigation upgraded** — replaced `DASHBOARD_MARKDOWN` panel ("Return to World Overview" link) with a native Kibana `links` panel for proper dashboard cross-linking
+- **Dashboard access control updated** — Aircraft World Overview set to `write_restricted`; Aircraft Detail `accessControl` removed
+- **Dashboard pinned panels removed** — both dashboards had `pinned_panels` cleared
+- **Control group reference naming** — options list references updated with `controlGroup_` prefix (Kibana version migration)
+
 ## [1.6.1] - 2026-03-19
 
 ### Fixed
@@ -321,4 +333,5 @@ Kibana dashboards.
 [1.5.1]: https://github.com/face0b1101/adsb-demo/compare/v1.5.0...v1.5.1
 [1.6.0]: https://github.com/face0b1101/adsb-demo/compare/v1.5.1...v1.6.0
 [1.6.1]: https://github.com/face0b1101/adsb-demo/compare/v1.6.0...v1.6.1
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.6.1...HEAD
+[1.6.2]: https://github.com/face0b1101/adsb-demo/compare/v1.6.1...v1.6.2
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.6.2...HEAD
