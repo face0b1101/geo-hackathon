@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-19
+
+### Added
+
+- **Case custom fields and template** — new `elasticsearch/cases/observability-config.json` defines four custom fields (ICAO24 Address, Callsign, AI Triage Assessment, Confidence) and a "Squawk 7500 — Hijack Investigation" case template; `setup.sh` gains a `cases` group that creates or updates the case configuration via the Kibana Cases configure API; `make deploy-cases` target added
+- **Custom fields populated by workflows** — both `squawk-7500-hijack-investigation.yaml` and `squawk-7500-create-case.yaml` now set `customFields` when creating or tagging cases, providing structured metadata alongside the existing tag-based deduplication
+- **Case category** — cases created by both `squawk-7500-hijack-investigation.yaml` and `squawk-7500-create-case.yaml` now carry `category: "Hijack Triage"`
+- **Cases link in daily briefing** — Slack message now includes an "Open Cases" link alongside the existing "Open Dashboard" link
+- **Known Quirk #5** in `AGENTS.md` — documents that Case custom field `type: "number"` is integer-only and unsupported in `kibana.createCase`; recommends `type: "text"` with categorical values as a workaround
+
+### Changed
+
+- **"Verdict" renamed to "AI Triage Assessment"** across all user-facing surfaces — case tags use `triage:genuine` / `triage:false_positive` (previously `verdict:`), workflow inputs and parse conditions use the new label, agent instructions output `**AI Triage Assessment:**` instead of `**Verdict:**`, and all documentation updated to match; existing cases retain their old `verdict:` tags
+- **`squawk-7500-create-case` workflow input renamed** — `verdict` input is now `triage_assessment`; agent tool description in `setup.sh` updated accordingly
+- **Confidence changed from numeric to categorical** — agent instructions and `squawk-7500-create-case` workflow now use `low` / `medium` / `high` instead of a 0–1 float, avoiding the Cases API integer-only limitation for number fields
+- **Case deduplication switched to composite tag** — `squawk-7500-hijack-investigation.yaml` and `squawk-7500-create-case.yaml` now deduplicate using a single `icao24:{icao24}:callsign:{callsign}` tag instead of separate `icao24:` + `squawk-7500` tags, sidestepping the Kibana Cases `_find` OR-logic quirk
+- **False positives no longer auto-closed** — `close_case` step replaced by `tag_false_positive`; false-positive cases are tagged `triage:false_positive` and left open for human review instead of being automatically closed
+- **Slack case link corrected** — hijack investigation Slack notification now links to `/app/observability/cases/` (matching `owner: observability`) instead of `/app/security/cases/`
+- **ES|QL alert rule LIMIT increased** — from 10 to 100, allowing the alert rule to surface more aircraft per evaluation window
+- **Service user step refactored** — removed `serviceuser` from `ALL_GROUPS`; the service user step now always runs first (unless `--no-service-user` is passed), even when `--only` selects a subset of groups
+- **Documentation updated** — README, `elasticsearch/agents/README.md`, and `elasticsearch/workflows/README.md` updated to reflect renamed fields, new deduplication strategy, and revised routing behaviour
+
 ## [1.5.1] - 2026-03-18
 
 ### Added
@@ -291,4 +313,5 @@ Kibana dashboards.
 [1.4.5]: https://github.com/face0b1101/adsb-demo/compare/v1.4.4...v1.4.5
 [1.5.0]: https://github.com/face0b1101/adsb-demo/compare/v1.4.5...v1.5.0
 [1.5.1]: https://github.com/face0b1101/adsb-demo/compare/v1.5.0...v1.5.1
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.5.1...HEAD
+[1.6.0]: https://github.com/face0b1101/adsb-demo/compare/v1.5.1...v1.6.0
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.6.0...HEAD

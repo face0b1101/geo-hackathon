@@ -1,7 +1,7 @@
 name: Hijack Cases Summary
 description: >-
   Fetches squawk 7500 (hijack) investigation cases from the last 24 hours.
-  Returns case titles, tags (including verdict:genuine or verdict:false_positive),
+  Returns case titles, tags (including triage:genuine or triage:false_positive),
   and status for use in the daily briefing or interactive queries.
 enabled: true
 tags: ["adsb", "squawk-7500", "cases", "briefing"]

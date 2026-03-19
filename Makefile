@@ -1,7 +1,7 @@
 FORCE_FLAG := $(if $(FORCE),--force,)
 
 .PHONY: setup setup-no-service-user deploy-ilm deploy-indices deploy-enrich deploy-pipelines deploy-kibana \
-        deploy-workflows deploy-agents deploy-es deploy-ai redeploy \
+        deploy-cases deploy-workflows deploy-agents deploy-es deploy-ai redeploy \
         up down logs restart status clean \
         validate health ps shell help
 
@@ -29,6 +29,9 @@ deploy-pipelines:   ## Deploy ES ingest pipelines
 
 deploy-kibana:      ## Deploy Kibana saved objects (dashboards, data views)
 	./setup.sh --only kibana $(FORCE_FLAG)
+
+deploy-cases:       ## Deploy case configuration (custom fields, templates)
+	./setup.sh --only cases $(FORCE_FLAG)
 
 deploy-workflows:   ## Deploy Kibana workflows
 	./setup.sh --only workflows $(FORCE_FLAG)

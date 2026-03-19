@@ -154,8 +154,8 @@ The main investigation workflow. When the squawk 7500 alerting rule fires it
 runs an end-to-end investigation: fetch the triggering event, deduplicate via
 Kibana case management, enrich with internal flight history and three external
 APIs, invoke the Hijack Assessment Analyst agent for an AI-powered
-genuine-or-false-positive verdict, update the case, and route the outcome --
-Slack alert for genuine threats, automatic case closure for false positives.
+genuine-or-false-positive triage assessment, update the case, and route the
+outcome — Slack alert for genuine threats, tagging for false positives.
 
 ```mermaid
 flowchart TD
@@ -178,9 +178,9 @@ flowchart TD
 
     AI --> UpdateCase["8. update_case_enrichment\nPost assessment +\ndata-source summary\nto Kibana case"]
 
-    UpdateCase --> Branch2{"9. Verdict?"}
+    UpdateCase --> Branch2{"9. Triage\nassessment?"}
     Branch2 -->|GENUINE| SlackAlert["notify_slack\nSlack alert with\ncase link"]
-    Branch2 -->|FALSE_POSITIVE| CloseCase["close_case\nAuto-close\nKibana case"]
+    Branch2 -->|FALSE_POSITIVE| TagFP["tag_false_positive\nTag case"]
 ```
 
 **Step-by-step summary:**
@@ -201,13 +201,13 @@ flowchart TD
    - **news_search** -- news articles mentioning the callsign and "hijack"
      (requires `GNEWS_API_KEY`).
 7. **ai_assessment** -- sends all enrichment data to the Hijack Assessment
-   Analyst agent, which returns a structured verdict (`[GENUINE]` or
-   `[FALSE_POSITIVE]`) with confidence and reasoning.
+   Analyst agent, which returns a structured triage assessment (`genuine` or
+   `false_positive`) with confidence and reasoning.
 8. **update_case_enrichment** -- posts the AI assessment and a data-source
    summary as a comment on the Kibana case.
-9. **route_verdict** (branch) -- if the verdict contains `[GENUINE]`, sends a
-   Slack alert with aircraft details and a case link; otherwise auto-closes the
-   case.
+9. **route_triage** (branch) -- if the AI triage assessment is `genuine`, sends
+   a Slack alert with aircraft details and a case link; otherwise tags the case
+   as a false positive.
 
 ______________________________________________________________________
 
@@ -264,7 +264,7 @@ one exists, adds the assessment as a comment; otherwise creates a new case.
 | ------------ | ------ | -------- | ---------------------------------- |
 | `icao24`     | string | yes      | ICAO 24-bit aircraft address (hex) |
 | `callsign`   | string | no       | Flight callsign                    |
-| `verdict`    | string | yes      | `genuine` or `false_positive`      |
+| `triage_assessment` | string | yes | `genuine` or `false_positive`   |
 | `confidence` | string | yes      | Confidence score (0--1)            |
 | `reasoning`  | string | yes      | Full assessment reasoning text     |
 
@@ -272,7 +272,7 @@ one exists, adds the assessment as a comment; otherwise creates a new case.
 flowchart TD
     Trigger["Manual trigger\nor agent tool call"] --> Find["1. find_existing_case\nSearch open cases\nby icao24 + squawk-7500"]
     Find --> Branch{"Case\nexists?"}
-    Branch -->|Yes| Comment["add_case_comment\nAppend verdict,\nconfidence, reasoning"]
+    Branch -->|Yes| Comment["add_case_comment\nAppend assessment,\nconfidence, reasoning"]
     Branch -->|No| Create["create_case\nNew case with\nassessment details + tags"]
 ```
 
@@ -298,9 +298,10 @@ registered so it can trigger workflows on the user's behalf.
 - **Workflow tools:** `squawk-7500-enrich`, `squawk-7500-create-case`
 - **Role:** Assesses whether a squawk 7500 signal is genuine or a false
   positive. In interactive chat mode, calls the Enrich workflow to gather data,
-  then presents a verdict. Can optionally open a Kibana case via the Create Case
-  workflow. In automated mode (called by the Hijack Investigation workflow), it
-  receives pre-gathered data and returns a structured verdict directly.
+  then presents a triage assessment. Can optionally open a Kibana case via the
+  Create Case workflow. In automated mode (called by the Hijack Investigation
+  workflow), it receives pre-gathered data and returns a structured assessment
+  directly.
 
 ______________________________________________________________________
 

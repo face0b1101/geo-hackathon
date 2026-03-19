@@ -190,7 +190,7 @@ build an evidence-based assessment.
 | `platform.core.search`                        | Ad-hoc queries against ADS-B data                     |
 | `platform.core.get_workflow_execution_status` | Poll workflow completion                              |
 | `squawk-7500-enrich`                          | Gather flight history, adsbdb, adsb.lol, GNews data   |
-| `squawk-7500-create-case`                     | Create or update a Kibana case with the verdict       |
+| `squawk-7500-create-case`                     | Create or update a Kibana case with the triage assessment |
 
 ### Operating modes
 
@@ -198,13 +198,13 @@ This agent operates in two distinct modes depending on how it is invoked.
 
 **Interactive chat** -- a user asks the agent to assess a specific aircraft. The
 agent calls the `squawk-7500-enrich` workflow tool, polls for results, runs its
-assessment, and presents the verdict. It then offers to open a Kibana case via
-the `squawk-7500-create-case` workflow tool if the user requests it.
+assessment, and presents the triage assessment. It then offers to open a Kibana
+case via the `squawk-7500-create-case` workflow tool if the user requests it.
 
 **Automated workflow** -- the `squawk-7500-hijack-investigation` workflow calls
 this agent as an `ai.agent` step with all enrichment data pre-gathered in the
 prompt. The agent skips tool calls, assesses directly, and returns a structured
-verdict so the workflow can route it.
+assessment so the workflow can route it.
 
 ```mermaid
 flowchart TD
@@ -212,7 +212,7 @@ flowchart TD
         UserChat["User asks to\nassess aircraft"] --> EnrichCall["Agent calls\nsquawk-7500-enrich"]
         EnrichCall --> PollChat["Poll for\ncompletion"]
         PollChat --> Assess1["Run assessment\n6 evaluation criteria"]
-        Assess1 --> Verdict1["Present verdict\nto user"]
+        Assess1 --> Verdict1["Present assessment\nto user"]
         Verdict1 --> CaseOffer{"User wants\na case?"}
         CaseOffer -->|Yes| CaseCall["Call\nsquawk-7500-create-case"]
         CaseOffer -->|No| Done1["Done"]
@@ -220,7 +220,7 @@ flowchart TD
 
     subgraph autoMode [Automated Workflow]
         WfCall["Hijack investigation\nworkflow sends\npre-gathered data"] --> Assess2["Run assessment\n6 evaluation criteria"]
-        Assess2 --> Verdict2["Return structured\nverdict + confidence\n+ reasoning"]
+        Assess2 --> Verdict2["Return structured\nassessment + confidence\n+ reasoning"]
     end
 ```
 
@@ -246,12 +246,12 @@ The agent considers these factors in order of importance:
 
 Every assessment includes three fields:
 
-- **Verdict:** `genuine` or `false_positive`
+- **AI Triage Assessment:** `genuine` or `false_positive`
 - **Confidence:** a number between 0 and 1
 - **Reasoning:** a concise paragraph referencing specific evidence
 
-When called from the automated workflow, the response begins with `[GENUINE]` or
-`[FALSE_POSITIVE]` on its own line so the workflow can parse and route it.
+When called from the automated workflow, the `**AI Triage Assessment:**` line is
+parsed to route genuine threats vs false positives.
 
 ______________________________________________________________________
 

@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR"
 FORCE=false
 SKIP_SERVICE_USER=false
 SELECTED_GROUPS=""
-ALL_GROUPS="serviceuser space ilm indices enrich pipelines kibana workflows agents"
+ALL_GROUPS="space ilm indices enrich pipelines kibana cases workflows agents"
 
 usage() {
   cat <<EOF
@@ -28,6 +28,9 @@ than the human operator. Use --no-service-user to skip this.
 If KB_SPACE is set in .env, the Kibana space is created automatically with
 the Observability solution view, and all Kibana resources are deployed
 into that space.
+
+The service-user step always runs first (unless --no-service-user is passed),
+even when --only is used to select a subset of groups.
 
 Options:
   --only GROUP[,GROUP]  Run only the specified groups (comma-separated).
@@ -69,16 +72,6 @@ else
   done
 fi
 
-if [[ "$SKIP_SERVICE_USER" == "true" ]]; then
-  _filtered_groups=""
-  for _g in $SELECTED_GROUPS; do
-    [[ "$_g" == "serviceuser" ]] && continue
-    _filtered_groups="${_filtered_groups:+$_filtered_groups }$_g"
-  done
-  SELECTED_GROUPS="$_filtered_groups"
-  unset _filtered_groups _g
-fi
-
 group_enabled() { echo "$SELECTED_GROUPS" | grep -qw "$1"; }
 
 # ---------------------------------------------------------------------------
@@ -116,13 +109,13 @@ fi
 # ---------------------------------------------------------------------------
 
 declare -A GROUP_STEPS=(
-  [serviceuser]=1
   [space]=1
   [ilm]=1
   [indices]=6
   [enrich]=4
   [pipelines]=2
   [kibana]=1
+  [cases]=1
   [agents]=3
   [workflows]=13
 )
@@ -131,6 +124,7 @@ TOTAL=0
 for g in $SELECTED_GROUPS; do
   TOTAL=$((TOTAL + GROUP_STEPS[$g]))
 done
+[[ "$SKIP_SERVICE_USER" == "false" ]] && TOTAL=$((TOTAL + 1))
 
 STEP=0
 
@@ -698,6 +692,87 @@ setup_kibana() {
 }
 
 # ---------------------------------------------------------------------------
+# Group: cases
+# ---------------------------------------------------------------------------
+
+setup_cases() {
+  step_label "Configuring case custom fields and templates"
+
+  local config_file="elasticsearch/cases/observability-config.json"
+
+  # Check for existing case configuration for the observability owner
+  local cfg_tmp cfg_http
+  cfg_tmp=$(mktemp)
+  cfg_http=$(curl -s -w '%{http_code}' -o "$cfg_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -H "kbn-xsrf: true" \
+    -X GET "$KB_BASE/api/cases/configure?owner=observability")
+
+  if [[ "$cfg_http" -lt 200 || "$cfg_http" -ge 300 ]]; then
+    echo "  WARNING (HTTP $cfg_http): Could not query case configuration." >&2
+    cat "$cfg_tmp" >&2
+    rm -f "$cfg_tmp"
+    return 0
+  fi
+
+  local existing_id existing_version
+  existing_id=$(jq -r '.[0].id // empty' < "$cfg_tmp" 2>/dev/null || true)
+  existing_version=$(jq -r '.[0].version // empty' < "$cfg_tmp" 2>/dev/null || true)
+
+  if [[ -n "$existing_id" ]]; then
+    if [[ "$FORCE" == "true" ]]; then
+      echo "  Configuration exists — updating (--force)"
+      local patch_payload
+      patch_payload=$(jq --arg ver "$existing_version" '{
+        version: $ver,
+        customFields: .customFields,
+        templates: .templates
+      }' "$config_file")
+
+      local patch_tmp patch_http
+      patch_tmp=$(mktemp)
+      patch_http=$(curl -s -w '%{http_code}' -o "$patch_tmp" \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -H "kbn-xsrf: true" \
+        -H "Content-Type: application/json" \
+        -X PATCH "$KB_BASE/api/cases/configure/$existing_id" \
+        -d "$patch_payload")
+
+      if [[ "$patch_http" -lt 200 || "$patch_http" -ge 300 ]]; then
+        echo "  WARNING (HTTP $patch_http): Could not update case configuration." >&2
+        cat "$patch_tmp" >&2
+      else
+        echo "  Updated (HTTP $patch_http)"
+      fi
+      rm -f "$patch_tmp"
+    else
+      echo "  Already exists — skipping"
+    fi
+  else
+    echo "  Creating case configuration ..."
+    local create_tmp create_http
+    create_tmp=$(mktemp)
+    create_http=$(curl -s -w '%{http_code}' -o "$create_tmp" \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -H "kbn-xsrf: true" \
+      -H "Content-Type: application/json" \
+      -X POST "$KB_BASE/api/cases/configure" \
+      -d "@$config_file")
+
+    if [[ "$create_http" -lt 200 || "$create_http" -ge 300 ]]; then
+      echo "  WARNING (HTTP $create_http): Could not create case configuration." >&2
+      cat "$create_tmp" >&2
+      echo "  Configure it manually in Kibana > Cases > Settings." >&2
+    else
+      echo "  Created (HTTP $create_http)"
+    fi
+    rm -f "$create_tmp"
+  fi
+
+  rm -f "$cfg_tmp"
+}
+
+# ---------------------------------------------------------------------------
 # Group: agents
 # ---------------------------------------------------------------------------
 
@@ -885,7 +960,7 @@ setup_workflows() {
 
   if [[ "$rule_needs_create" == "true" ]]; then
     local rule_payload
-    local esql_query='FROM demos-aircraft-adsb | WHERE squawk == "7500" | KEEP @timestamp, icao24, callsign, squawk, origin_country, latitude, longitude, baro_altitude, velocity, true_track, vertical_rate, on_ground, geo_altitude | LIMIT 10'
+    local esql_query='FROM demos-aircraft-adsb | WHERE squawk == "7500" | KEEP @timestamp, icao24, callsign, squawk, origin_country, latitude, longitude, baro_altitude, velocity, true_track, vertical_rate, on_ground, geo_altitude | LIMIT 100'
     rule_payload=$(jq -n --arg esql "$esql_query" --arg wf_id "$hijack_wf_id_for_rule" --arg dash_id "$DASHBOARD_AIRCRAFT_DETAIL_ID" '{
       name: "Squawk 7500 \u2014 Hijack Detection",
       rule_type_id: ".es-query",
@@ -901,7 +976,7 @@ setup_workflows() {
         thresholdComparator: ">",
         timeWindowSize: 5,
         timeWindowUnit: "m",
-        size: 10,
+        size: 100,
         groupBy: "row"
       },
       artifacts: {
@@ -1344,7 +1419,7 @@ setup_workflows() {
   rm -f "$case_tmp"
 
   register_wf_tool "squawk-7500-create-case" "${case_wf_id:-}" \
-    $'Creates or updates a Kibana case for a squawk 7500 investigation with deduplication. If an open case already exists for the aircraft, adds a comment; otherwise creates a new case.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address\n- callsign (optional string): flight callsign\n- verdict (required string): genuine or false_positive\n- confidence (required string): confidence score 0\u20131\n- reasoning (required string): full assessment reasoning\n\nThis is an async workflow \u2014 poll with platform.core.get_workflow_execution_status until complete.' \
+    $'Creates or updates a Kibana case for a squawk 7500 investigation with deduplication. If an open case already exists for the aircraft, adds a comment; otherwise creates a new case.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address\n- callsign (optional string): flight callsign\n- triage_assessment (required string): genuine or false_positive\n- confidence (required string): confidence level \u2014 low, medium, or high\n- reasoning (required string): full assessment reasoning\n\nThis is an async workflow \u2014 poll with platform.core.get_workflow_execution_status until complete.' \
     '["adsb", "squawk-7500", "cases"]'
 
   # --- Deploy ADS-B aggregate stats workflow ---
@@ -1486,7 +1561,7 @@ setup_workflows() {
       echo "  Already exists — skipping"
       local hcs_wf_id="$existing_hcs_id"
       register_wf_tool "hijack-cases-summary" "$hcs_wf_id" \
-        $'Fetches squawk 7500 (hijack) investigation cases from Kibana case management. Returns case titles, tags (including verdict:genuine or verdict:false_positive), status, and creation dates.\n\nUse this to review hijack investigation outcomes — how many were genuine vs false positive. Cases are tagged with verdict:genuine or verdict:false_positive after AI assessment.\n\nResults are at output.cases (array) and output.total (count). This is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+        $'Fetches squawk 7500 (hijack) investigation cases from Kibana case management. Returns case titles, tags (including triage:genuine or triage:false_positive), status, and creation dates.\n\nUse this to review hijack investigation outcomes — how many were genuine vs false positive. Cases are tagged with triage:genuine or triage:false_positive after AI triage assessment.\n\nResults are at output.cases (array) and output.total (count). This is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
         '["adsb", "squawk-7500", "cases"]'
       rm -f "$hcs_tmp"
       return 0
@@ -1524,7 +1599,7 @@ setup_workflows() {
   echo "  OK (HTTP $hcs_http) — workflow ID: ${hcs_wf_id:-unknown}"
 
   register_wf_tool "hijack-cases-summary" "$hcs_wf_id" \
-    $'Fetches squawk 7500 (hijack) investigation cases from Kibana case management. Returns case titles, tags (including verdict:genuine or verdict:false_positive), status, and creation dates.\n\nUse this to review hijack investigation outcomes — how many were genuine vs false positive. Cases are tagged with verdict:genuine or verdict:false_positive after AI assessment.\n\nResults are at output.cases (array) and output.total (count). This is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+    $'Fetches squawk 7500 (hijack) investigation cases from Kibana case management. Returns case titles, tags (including triage:genuine or triage:false_positive), status, and creation dates.\n\nUse this to review hijack investigation outcomes — how many were genuine vs false positive. Cases are tagged with triage:genuine or triage:false_positive after AI triage assessment.\n\nResults are at output.cases (array) and output.total (count). This is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
     '["adsb", "squawk-7500", "cases"]'
   rm -f "$hcs_tmp"
 }
@@ -1587,13 +1662,14 @@ echo "Groups: $SELECTED_GROUPS"
 [[ -n "${KB_SPACE:-}" ]] && echo "Space: $KB_SPACE"
 echo ""
 
-group_enabled "serviceuser" && setup_serviceuser
+[[ "$SKIP_SERVICE_USER" == "false" ]] && setup_serviceuser
 group_enabled "space"     && setup_space
 group_enabled "ilm"       && setup_ilm
 group_enabled "indices"   && setup_indices
 group_enabled "enrich"    && setup_enrich
 group_enabled "pipelines" && setup_pipelines
 group_enabled "kibana"    && setup_kibana
+group_enabled "cases"     && setup_cases
 group_enabled "workflows" && setup_workflows
 group_enabled "agents"    && setup_agents
 

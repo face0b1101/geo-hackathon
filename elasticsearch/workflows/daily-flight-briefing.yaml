@@ -132,8 +132,9 @@ steps:
 
         === HIJACK INVESTIGATION CASES ===
         The following are squawk 7500 (hijack) investigation cases from
-        Kibana case management. Each case has tags that include the verdict
-        (verdict:genuine or verdict:false_positive). Use created_at timestamps
+        Kibana case management. Each case has tags that include the AI triage
+        assessment (triage:genuine or triage:false_positive). Use created_at
+        timestamps
         to identify cases from the last 24 hours. If this section is empty
         or shows an error, state "Hijack case data unavailable" and skip
         section 10.
@@ -202,6 +203,7 @@ steps:
         {{ steps.generate_briefing.output }}
 
         :bar_chart: <__KB_ENDPOINT__/app/dashboards#/view/__DASHBOARD_WORLD_OVERVIEW_ID__?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h,to:now))|Open Dashboard>
+        :open_file_folder: <__KB_ENDPOINT__/app/observability/cases|Open Cases>
 
     on-failure:
       continue: true

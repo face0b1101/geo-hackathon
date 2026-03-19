@@ -94,7 +94,7 @@ The setup script deploys several [Elastic Workflows](https://www.elastic.co/docs
 2. Creates a new case with aircraft details and attaches the triggering alert
 3. Enriches with flight history, aircraft registry (adsbdb), live position (adsb.lol), and news articles (GNews)
 4. Invokes the **ADS-B Hijack Assessment** agent for AI-powered false-positive analysis
-5. Routes based on verdict — Slack notification for genuine threats, auto-close for false positives
+5. Routes based on AI triage assessment — Slack notification for genuine threats, tagging for false positives
 
 Supporting workflows (`squawk-7500-enrich`, `squawk-7500-create-case`, `hijack-cases-summary`, `adsb-aggregate-stats`) are deployed as agent tools.
 
@@ -109,7 +109,7 @@ Supporting workflows (`squawk-7500-enrich`, `squawk-7500-create-case`, `hijack-c
 - **Workflows** — enable the Workflows UI in Kibana: _Stack Management > Advanced Settings_ > search for `workflows:ui:enabled` and set it to `true`.
 - **Dark mode (optional)** — if preferred, enable dark mode for your space: _Stack Management > Advanced Settings_ > search for `theme:darkMode` and set it to `Enabled`.
 - **Slack (optional)** — to receive briefings in Slack, [create a Slack app](https://api.slack.com/messaging/webhooks) with an incoming webhook and add the webhook URL to `.env` as `SLACK_WEBHOOK_URL`. The setup script creates the Kibana connector automatically. Alternatively, configure the connector manually in Kibana under Stack Management > Connectors.
-- **Cases (optional)** — the squawk 7500 hijack investigation workflow uses Kibana Cases for full functionality — tracking verdicts, deduplication, and Slack routing. Cases are available on Cloud Hosted, Observability Serverless, and start-local (see the [deployment comparison table](#getting-started-with-elasticsearch)). Workflows use `owner: observability` for case management. Without Cases (e.g. Elasticsearch Serverless), the workflow and daily briefing still operate but skip case management and investigation-outcomes sections gracefully.
+- **Cases (optional)** — the squawk 7500 hijack investigation workflow uses Kibana Cases for full functionality — tracking triage assessments, deduplication, and Slack routing. Cases are available on Cloud Hosted, Observability Serverless, and start-local (see the [deployment comparison table](#getting-started-with-elasticsearch)). Workflows use `owner: observability` for case management. Without Cases (e.g. Elasticsearch Serverless), the workflow and daily briefing still operate but skip case management and investigation-outcomes sections gracefully.
 - **GNews (optional)** — the hijack investigation and enrichment workflows correlate squawk 7500 signals with news articles via the [GNews API](https://gnews.io). Sign up for a free API key (100 requests/day) and add it to `.env` as `GNEWS_API_KEY`. The free tier has a 12-hour article delay; the paid Essential tier provides real-time results. If not set, the news correlation step is skipped gracefully.
 
 ## Getting Started with Elasticsearch

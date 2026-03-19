@@ -1,0 +1,63 @@
+{
+  "owner": "observability",
+  "closure_type": "close-by-user",
+  "connector": {
+    "id": "none",
+    "name": "none",
+    "type": ".none",
+    "fields": null
+  },
+  "customFields": [
+    {
+      "key": "icao24",
+      "label": "ICAO24 Address",
+      "type": "text",
+      "required": true
+    },
+    {
+      "key": "callsign",
+      "label": "Callsign",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "ai_triage_assessment",
+      "label": "AI Triage Assessment",
+      "type": "text",
+      "required": false
+    },
+    {
+      "key": "confidence",
+      "label": "Confidence",
+      "type": "text",
+      "required": false
+    }
+  ],
+  "templates": [
+    {
+      "key": "squawk-7500-hijack",
+      "name": "Squawk 7500 — Hijack Investigation",
+      "description": "Template for squawk 7500 hijack investigation cases triggered by alert or manual creation.",
+      "tags": ["squawk-7500", "hijack"],
+      "caseFields": {
+        "severity": "critical",
+        "tags": ["squawk-7500", "auto-investigation"],
+        "settings": {
+          "syncAlerts": true
+        },
+        "connector": {
+          "id": "none",
+          "name": "none",
+          "type": ".none",
+          "fields": null
+        },
+        "customFields": [
+          { "key": "icao24", "type": "text", "value": null },
+          { "key": "callsign", "type": "text", "value": null },
+          { "key": "ai_triage_assessment", "type": "text", "value": null },
+          { "key": "confidence", "type": "text", "value": null }
+        ]
+      }
+    }
+  ]
+}

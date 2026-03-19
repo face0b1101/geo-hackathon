@@ -2,11 +2,13 @@ name: Squawk 7500 Hijack Investigation
 description: >-
   Alert-triggered investigation workflow for squawk 7500 (hijack) signals.
   Runs once per aircraft via ES|QL per-row alert grouping. Deduplicates
-  against open cases, creates a Kibana case with attached alert, enriches
-  with flight history and external data (adsbdb aircraft/route, adsb.lol
-  live position, GNews news search), invokes the hijack assessment agent
-  for AI-powered false-positive analysis, and routes based on the verdict
-  — Slack for genuine threats, auto-close for false positives.
+  against open cases using a composite icao24:callsign tag, creates a
+  Kibana case with attached alert, enriches with flight history and
+  external data (adsbdb aircraft/route, adsb.lol live position, GNews
+  news search), invokes the hijack assessment agent for AI-powered
+  false-positive analysis, and tags the case with the AI triage
+  assessment — Slack notification for genuine threats, human review
+  for false positives.
 enabled: true
 tags: ["adsb", "squawk-7500", "hijack", "alert", "ai", "cases"]
 
@@ -27,7 +29,7 @@ steps:
     type: kibana.request
     with:
       method: GET
-      path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}&status=open&perPage=1"
+      path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}&status=open&perPage=1"
 
   - name: new_aircraft_only
     type: if
@@ -69,6 +71,7 @@ steps:
             Squawk 7500 (Hijack) —
             {{ event.alerts[0].kibana.alert.grouping.callsign }}
             ({{ event.alerts[0].kibana.alert.grouping.icao24 }})
+          category: "Hijack Triage"
           description: |
             Automated investigation triggered by squawk 7500 detection.
 
@@ -85,7 +88,21 @@ steps:
             - "squawk-7500"
             - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
             - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+            - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
             - "auto-investigation"
+          customFields:
+            - key: icao24
+              type: text
+              value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+            - key: callsign
+              type: text
+              value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+            - key: ai_triage_assessment
+              type: text
+              value: null
+            - key: confidence
+              type: text
+              value: null
 
       # ----------------------------------------------------------------
       # 3. Attach the triggering alert to the case
@@ -184,12 +201,13 @@ steps:
             workflow tool; assess directly from this data.
 
             Format your response using the structured output format from your
-            instructions (title line, Verdict, Confidence, Reasoning with
-            key-evidence bullets). The workflow parses the "**Verdict:**" line
-            for routing, so it must read exactly:
-              **Verdict:** `genuine`
+            instructions (title line, AI Triage Assessment, Confidence,
+            Reasoning with key-evidence bullets). The workflow parses the
+            "**AI Triage Assessment:**" line for routing, so it must read
+            exactly:
+              **AI Triage Assessment:** `genuine`
             or
-              **Verdict:** `false_positive`
+              **AI Triage Assessment:** `false_positive`
 
             === TRIGGERING EVENT ===
             ICAO24: {{ event.alerts[0].kibana.alert.grouping.icao24 }}
@@ -254,12 +272,15 @@ steps:
           path: "__SPACE_PREFIX__/api/cases/{{ steps.create_case.output.id }}"
 
       # ----------------------------------------------------------------
-      # 11. Route — Slack for genuine, auto-close for false positive
+      # 11. Route — Slack for genuine, tag for false positive
+      #     Cases are never auto-closed; a human reviews and closes.
       # ----------------------------------------------------------------
-      - name: route_verdict
+      - name: route_triage
         type: if
-        condition: "${{ steps.ai_assessment.output contains '**Verdict:** `genuine`' }}"
+        condition: "${{ steps.ai_assessment.output contains '**AI Triage Assessment:** `genuine`' }}"
         steps:
+          # PATCH replaces the entire customFields array, so all
+          # fields must be included to avoid losing values.
           - name: tag_genuine
             type: kibana.request
             with:
@@ -273,8 +294,22 @@ steps:
                       - "squawk-7500"
                       - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
                       - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                      - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
                       - "auto-investigation"
-                      - "verdict:genuine"
+                      - "triage:genuine"
+                    customFields:
+                      - key: icao24
+                        type: text
+                        value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                      - key: callsign
+                        type: text
+                        value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                      - key: ai_triage_assessment
+                        type: text
+                        value: "genuine"
+                      - key: confidence
+                        type: text
+                        value: null
           - name: notify_slack
             type: slack
             connector-id: "__SLACK_CONNECTOR_ID__"
@@ -290,12 +325,14 @@ steps:
 
                 {{ steps.ai_assessment.output }}
 
-                :file_folder: <__KB_ENDPOINT__/app/security/cases/{{ steps.create_case.output.id }}|Open Case>
+                :open_file_folder: <__KB_ENDPOINT__/app/observability/cases/{{ steps.create_case.output.id }}|Open Case>
                 :bar_chart: <__KB_ENDPOINT__/app/dashboards#/view/__DASHBOARD_AIRCRAFT_DETAIL_ID__?_g=(time:(from:now-6h,to:now))&_a=(filters:!((query:(match_phrase:(icao24:'{{ event.alerts[0].kibana.alert.grouping.icao24 }}')))))|Aircraft Detail Dashboard>
             on-failure:
               continue: true
         else:
-          - name: close_case
+          # PATCH replaces the entire customFields array, so all
+          # fields must be included to avoid losing values.
+          - name: tag_false_positive
             type: kibana.request
             with:
               method: PATCH
@@ -304,10 +341,23 @@ steps:
                 cases:
                   - id: "{{ steps.create_case.output.id }}"
                     version: "{{ steps.refetch_case.output.version }}"
-                    status: "closed"
                     tags:
                       - "squawk-7500"
                       - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
                       - "callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                      - "icao24:{{ event.alerts[0].kibana.alert.grouping.icao24 }}:callsign:{{ event.alerts[0].kibana.alert.grouping.callsign }}"
                       - "auto-investigation"
-                      - "verdict:false_positive"
+                      - "triage:false_positive"
+                    customFields:
+                      - key: icao24
+                        type: text
+                        value: "{{ event.alerts[0].kibana.alert.grouping.icao24 }}"
+                      - key: callsign
+                        type: text
+                        value: "{{ event.alerts[0].kibana.alert.grouping.callsign }}"
+                      - key: ai_triage_assessment
+                        type: text
+                        value: "false_positive"
+                      - key: confidence
+                        type: text
+                        value: null

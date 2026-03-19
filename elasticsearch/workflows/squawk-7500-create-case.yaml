@@ -1,10 +1,10 @@
 name: Squawk 7500 Create Case
 description: >-
   Creates or updates a Kibana case for a squawk 7500 investigation.
-  Deduplicates by searching for an existing open case tagged with the
-  aircraft's icao24. If one exists, adds a comment; otherwise creates a
-  new case with the assessment details. Designed as a workflow tool for
-  the hijack assessment agent.
+  Deduplicates by searching for an existing open case using a composite
+  icao24:callsign tag. If one exists, adds a comment; otherwise creates
+  a new case with the assessment details. Designed as a workflow tool
+  for the hijack assessment agent.
 enabled: true
 tags: ["adsb", "squawk-7500", "cases"]
 
@@ -24,14 +24,14 @@ inputs:
     required: false
     default: ""
     description: "Flight callsign"
-  - name: verdict
+  - name: triage_assessment
     type: string
     required: true
-    description: "Assessment verdict: genuine or false_positive"
+    description: "AI triage assessment: genuine or false_positive"
   - name: confidence
     type: string
     required: true
-    description: "Confidence score (0–1)"
+    description: "Confidence level: low, medium, or high"
   - name: reasoning
     type: string
     required: true
@@ -48,7 +48,7 @@ steps:
     type: kibana.request
     with:
       method: GET
-      path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ inputs.icao24 }}&tags=squawk-7500&status=open&perPage=1"
+      path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ inputs.icao24 }}:callsign:{{ inputs.callsign }}&status=open&perPage=1"
 
   # ------------------------------------------------------------------
   # 2. Create new case or add comment to existing
@@ -72,7 +72,7 @@ steps:
                 comment: |
                   ## Squawk 7500 Assessment — {{ inputs.icao24 }} ({{ inputs.callsign }})
 
-                  **Verdict:** `{{ inputs.verdict }}`
+                  **AI Triage Assessment:** `{{ inputs.triage_assessment }}`
                   **Confidence:** {{ inputs.confidence }}
 
                   ### Reasoning
@@ -94,10 +94,11 @@ steps:
             Squawk 7500 (Hijack) —
             {{ inputs.callsign }}
             ({{ inputs.icao24 }})
+          category: "Hijack Triage"
           description: |
             ## Squawk 7500 Assessment — {{ inputs.icao24 }} ({{ inputs.callsign }})
 
-            **Verdict:** `{{ inputs.verdict }}`
+            **AI Triage Assessment:** `{{ inputs.triage_assessment }}`
             **Confidence:** {{ inputs.confidence }}
 
             ### Reasoning
@@ -107,4 +108,18 @@ steps:
             - "squawk-7500"
             - "icao24:{{ inputs.icao24 }}"
             - "callsign:{{ inputs.callsign }}"
-            - "verdict:{{ inputs.verdict }}"
+            - "icao24:{{ inputs.icao24 }}:callsign:{{ inputs.callsign }}"
+            - "triage:{{ inputs.triage_assessment }}"
+          customFields:
+            - key: icao24
+              type: text
+              value: "{{ inputs.icao24 }}"
+            - key: callsign
+              type: text
+              value: "{{ inputs.callsign }}"
+            - key: ai_triage_assessment
+              type: text
+              value: "{{ inputs.triage_assessment }}"
+            - key: confidence
+              type: text
+              value: "{{ inputs.confidence }}"
