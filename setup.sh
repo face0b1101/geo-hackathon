@@ -218,7 +218,7 @@ setup_serviceuser() {
     "cluster": ["manage", "manage_security"],
     "indices": [
       {
-        "names": ["geo.shapes-world.countries-50m", "adsb-airports-geo", "demos-aircraft-adsb*"],
+        "names": ["geo.shapes-world.countries-50m", "adsb-airports-geo", "demos-aircraft-adsb*", "adsb-enrichment-cache"],
         "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
       }
     ],
@@ -833,10 +833,24 @@ deploy_agent() {
 }
 
 setup_agents() {
+  # Extract dashboard ID for agent instruction placeholders
+  local DASHBOARD_AIRCRAFT_DETAIL_ID
+  DASHBOARD_AIRCRAFT_DETAIL_ID=$(jq -r \
+    'select(.type == "dashboard" and .attributes.title == "Aircraft Detail") | .id' \
+    elasticsearch/kibana/adsb-saved-objects.ndjson | head -1)
+
+  # ADS-B agent needs KB_ENDPOINT and dashboard ID substituted into instructions
+  local adsb_agent_tmp
+  adsb_agent_tmp=$(mktemp)
+  sed -e "s|__KB_ENDPOINT__|${KB_BASE}|g" \
+      -e "s|__DASHBOARD_AIRCRAFT_DETAIL_ID__|${DASHBOARD_AIRCRAFT_DETAIL_ID}|g" \
+      "elasticsearch/agents/adsb-agent.json" > "$adsb_agent_tmp"
+
   deploy_agent \
     "adsb_agent" \
-    "elasticsearch/agents/adsb-agent.json" \
+    "$adsb_agent_tmp" \
     "ADS-B tracking agent"
+  rm -f "$adsb_agent_tmp"
 
   deploy_agent \
     "adsb_daily_briefing_agent" \
@@ -1333,7 +1347,7 @@ setup_workflows() {
   rm -f "$enrich_tmp"
 
   register_wf_tool "squawk-7500-enrich" "${enrich_wf_id:-}" \
-    $'Gathers enrichment data for a squawk 7500 investigation \u2014 flight history from Elasticsearch, aircraft metadata and route from adsbdb, live position from adsb.lol, and GNews news search.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address\n- callsign (optional string): flight callsign\n\nReturns step outputs: flight_history (ES search), latest_position (ES search), adsbdb_lookup (HTTP), adsblol_lookup (HTTP), news_search (HTTP).\n\nThis is an async workflow \u2014 poll with platform.core.get_workflow_execution_status until complete.' \
+    $'Gathers enrichment data for a squawk 7500 investigation \u2014 flight history from Elasticsearch, aircraft metadata and route from adsbdb, live position from adsb.lol, and GNews news search.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address\n- callsign (optional string): flight callsign\n\nReturns step outputs: flight_history (ES search), latest_position (ES search), adsbdb_lookup (HTTP), adsblol_lookup (HTTP), news_search (HTTP).\n\nStack 9.3.x workaround: HTTP step outputs may be null. The workflow caches enrichment responses in the adsb-enrichment-cache index. Query by _id: adsbdb:{icao24}, adsbdb_route:{callsign}, adsblol:{icao24}, gnews:{callsign}.\n\nThis is an async workflow \u2014 poll with platform.core.get_workflow_execution_status until complete.' \
     '["adsb", "squawk-7500", "enrichment"]'
 
   # --- Deploy squawk 7500 create-case workflow ---
@@ -1511,6 +1525,97 @@ setup_workflows() {
     $'Aggregates the last 24 hours of ADS-B data from demos-aircraft-adsb. Takes no parameters (fixed now-24h window).\n\nReturned aggregation keys:\n- unique_aircraft: cardinality of icao24\n- busiest_airports: top 10 by airport.iata_code\n- origin_countries: top 10 by origin_country\n- activity_breakdown: terms on airport.activity (arriving, departing, taxiing, overflight, at_airport — airport airspace zone only)\n- traffic_by_subregion: top 15 by geo.SUBREGION\n- traffic_by_continent: top 7 by geo.CONTINENT\n- ground_vs_airborne: terms on on_ground\n- emergency_squawks: named filters for 7500 (hijack), 7600 (radio failure), 7700 (general emergency)\n\nResults are at output.aggregations. Total document count is at hits.total.value. This is an async workflow \u2014 poll with platform.core.get_workflow_execution_status until complete.' \
     '["adsb", "aggregation"]'
   rm -f "$agg_tmp"
+
+  # --- Deploy aircraft history report workflow ---
+  step_label "Deploying aircraft history report workflow"
+
+  local hist_yaml
+  local _hist_yaml_content _hist_name
+  _hist_yaml_content=$(sed -e "s|__SPACE_PREFIX__|${_space_prefix}|g" \
+    "elasticsearch/workflows/adsb-aircraft-history.yaml")
+  _hist_name=$(echo "$_hist_yaml_content" | grep -m1 '^name:' | sed 's/^name:[[:space:]]*//')
+  hist_yaml=$(echo "$_hist_yaml_content" | jq -Rs '{yaml: .}')
+  hist_name_json=$(jq -n --arg name "$_hist_name" '{name: $name}')
+
+  local hist_tmp
+  hist_tmp=$(mktemp)
+
+  local hist_search_http existing_hist_id=""
+  hist_search_http=$(curl -s -w '%{http_code}' -o "$hist_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X POST "$KB_BASE/api/workflows/search" \
+    -H "kbn-xsrf: true" \
+    -H "x-elastic-internal-origin: kibana" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "ADS-B Aircraft History Report", "limit": 1}')
+
+  if [[ "$hist_search_http" -ge 200 && "$hist_search_http" -lt 300 ]]; then
+    existing_hist_id=$(jq -r '(.workflows // .results // [])[] | select(.name == "ADS-B Aircraft History Report") | .id' < "$hist_tmp" 2>/dev/null | head -1 || true)
+  fi
+
+  local hist_http
+  if [[ -n "$existing_hist_id" ]]; then
+    if [[ "$FORCE" == "true" ]]; then
+      echo "  Workflow exists — updating (--force)"
+      hist_http=$(curl -s -w '%{http_code}' -o "$hist_tmp" \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$existing_hist_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$hist_yaml")
+      curl -s -o /dev/null \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$existing_hist_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$hist_name_json"
+    else
+      echo "  Already exists — skipping"
+      local hist_wf_id="$existing_hist_id"
+      register_wf_tool "adsb-aircraft-history" "$hist_wf_id" \
+        $'Generates a comprehensive history report for an individual aircraft over a configurable time range.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address (hex, e.g. 406bbb)\n- lookback (optional string, default now-24h): lookback period in ES date math (e.g. now-24h, now-7d, now-48h)\n\nReturned step outputs:\n- flight_summary: aggregations — callsigns (ordered by first_seen, with time windows and airports), airports_visited, countries_overflown, regions, origin_country, altitude_stats, velocity_stats, ground_vs_airborne, squawk_codes, time_range, hourly_activity\n- positions: up to 1000 time-ordered position documents\n- find_cases: Kibana investigation cases tagged with the aircraft icao24\n- adsbdb_aircraft: airframe details (type, registration, operator) from adsbdb\n- adsblol_position: current live position from adsb.lol\n\nStack 9.3.x workaround: HTTP step outputs may be null. The workflow caches enrichment responses in the adsb-enrichment-cache index. Query by _id: adsbdb:{icao24} and adsblol:{icao24}.\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+        '["adsb", "aircraft", "history"]'
+      rm -f "$hist_tmp"
+      return 0
+    fi
+  else
+    hist_http=$(curl -s -w '%{http_code}' -o "$hist_tmp" \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -X POST "$KB_BASE/api/workflows" \
+      -H "kbn-xsrf: true" \
+      -H "x-elastic-internal-origin: kibana" \
+      -H "Content-Type: application/json" \
+      -d "$hist_yaml")
+  fi
+
+  if [[ "$hist_http" -lt 200 || "$hist_http" -ge 300 ]]; then
+    echo "  FAILED (HTTP $hist_http):" >&2
+    cat "$hist_tmp" >&2
+    rm -f "$hist_tmp"
+    exit 1
+  fi
+
+  local hist_wf_id
+  hist_wf_id=$(jq -r '.id // empty' < "$hist_tmp" 2>/dev/null || true)
+
+  if [[ -z "$existing_hist_id" && -n "$hist_wf_id" ]]; then
+    curl -s -o /dev/null \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -X PUT "$KB_BASE/api/workflows/$hist_wf_id" \
+      -H "kbn-xsrf: true" \
+      -H "x-elastic-internal-origin: kibana" \
+      -H "Content-Type: application/json" \
+      -d "$hist_name_json"
+  fi
+
+  echo "  OK (HTTP $hist_http) — workflow ID: ${hist_wf_id:-unknown}"
+
+  register_wf_tool "adsb-aircraft-history" "$hist_wf_id" \
+    $'Generates a comprehensive history report for an individual aircraft over a configurable time range.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address (hex, e.g. 406bbb)\n- lookback (optional string, default now-24h): lookback period in ES date math (e.g. now-24h, now-7d, now-48h)\n\nReturned step outputs:\n- flight_summary: aggregations — callsigns (ordered by first_seen, with time windows and airports), airports_visited, countries_overflown, regions, origin_country, altitude_stats, velocity_stats, ground_vs_airborne, squawk_codes, time_range, hourly_activity\n- positions: up to 1000 time-ordered position documents\n- find_cases: Kibana investigation cases tagged with the aircraft icao24\n- adsbdb_aircraft: airframe details (type, registration, operator) from adsbdb\n- adsblol_position: current live position from adsb.lol\n\nStack 9.3.x workaround: HTTP step outputs may be null. The workflow caches enrichment responses in the adsb-enrichment-cache index. Query by _id: adsbdb:{icao24} and adsblol:{icao24}.\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+    '["adsb", "aircraft", "history"]'
+  rm -f "$hist_tmp"
 
   # --- Deploy hijack cases summary workflow ---
   step_label "Deploying hijack cases summary workflow"

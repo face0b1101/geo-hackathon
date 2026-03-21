@@ -89,6 +89,19 @@ steps:
     on-failure:
       continue: true
 
+  # WORKAROUND(#9): Write adsbdb response to cache index
+  - name: cache_adsbdb
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/adsbdb:{{ inputs.icao24 }}"
+      body:
+        type: "adsbdb_aircraft"
+        icao24: "{{ inputs.icao24 }}"
+        raw: "{{ steps.adsbdb_aircraft.output | json }}"
+    on-failure:
+      continue: true
+
   # ------------------------------------------------------------------
   # 3b. adsbdb — expected route (only when callsign provided)
   # ------------------------------------------------------------------
@@ -104,14 +117,41 @@ steps:
         on-failure:
           continue: true
 
+      # WORKAROUND(#9): Write adsbdb route response to cache index
+      - name: cache_adsbdb_route
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/adsb-enrichment-cache/_doc/adsbdb_route:{{ inputs.callsign }}"
+          body:
+            type: "adsbdb_route"
+            callsign: "{{ inputs.callsign }}"
+            icao24: "{{ inputs.icao24 }}"
+            raw: "{{ steps.adsbdb_route.output | json }}"
+        on-failure:
+          continue: true
+
   # ------------------------------------------------------------------
-  # 4. adsb.lol — live position cross-reference
+  # 4. adsb.lol — live position cross-reference (always fetch fresh)
   # ------------------------------------------------------------------
   - name: adsblol_lookup
     type: http
     with:
       url: "https://api.adsb.lol/v2/icao/{{ inputs.icao24 }}"
       method: GET
+    on-failure:
+      continue: true
+
+  # WORKAROUND(#9): Write adsb.lol response to cache index
+  - name: cache_adsblol
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/adsblol:{{ inputs.icao24 }}"
+      body:
+        type: "adsblol_position"
+        icao24: "{{ inputs.icao24 }}"
+        raw: "{{ steps.adsblol_lookup.output | json }}"
     on-failure:
       continue: true
 
@@ -123,5 +163,19 @@ steps:
     with:
       url: "https://gnews.io/api/v4/search?q={{ inputs.callsign }}%20hijack&max=5&apikey=__GNEWS_API_KEY__"
       method: GET
+    on-failure:
+      continue: true
+
+  # WORKAROUND(#9): Write GNews response to cache index
+  - name: cache_gnews
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/gnews:{{ inputs.callsign }}"
+      body:
+        type: "gnews_search"
+        callsign: "{{ inputs.callsign }}"
+        icao24: "{{ inputs.icao24 }}"
+        raw: "{{ steps.news_search.output | json }}"
     on-failure:
       continue: true

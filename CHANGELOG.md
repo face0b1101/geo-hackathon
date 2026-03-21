@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-03-21
+
+### Added
+
+- **Aircraft history report workflow** (`adsb-aircraft-history.yaml`) — new workflow that generates a comprehensive history report for an individual aircraft over a configurable time range, including flight summary aggregations (callsigns with time windows and airports, countries, altitude/velocity stats), up to 1,000 time-ordered position samples, related Kibana cases, airframe details from adsbdb, and live position from adsb.lol
+- **ADS-B agent tool** — registered `adsb-aircraft-history` as a workflow tool for the Aircraft ADS-B Tracking Specialist agent; added report format instructions, 30-day lookback guardrail, and ES-authoritative data source priority guidance to the agent prompt
+- **Enrichment cache workaround** (`adsb-enrichment-cache` index) — agent-called workflows with HTTP steps now write external API responses to an ES cache index via `elasticsearch.request` PUT with `| json` serialisation, so agents can query cached data when workflow `outputs` are null on Stack 9.3.x (quirk #4); applied to both `adsb-aircraft-history` and `squawk-7500-enrich` workflows; tracked by [#12](https://github.com/face0b1101/adsb-demo/issues/12)
+- **Known Quirks #7–#9** in AGENTS.md — documented `elasticsearch.index` template limitations, null step names in `get_workflow_execution_status`, and `if` condition behaviour with failed step outputs
+- **Workflow authoring tips** in `elasticsearch/workflows/README.md` — indexing from step outputs, handling missing indices in conditionals, and two patterns for passing step data to agents
+
+### Changed
+
+- **ADS-B agent** (`adsb-agent.json`) — added `adsb-aircraft-history` tool, enrichment cache fallback instructions, 30-day lookback guardrail, and data source priority note; `setup_agents()` in `setup.sh` now substitutes `__KB_ENDPOINT__` and `__DASHBOARD_AIRCRAFT_DETAIL_ID__` placeholders in agent instructions at deploy time
+- **Hijack assessment agent** (`adsb-hijack-assessment-agent.json`) — added enrichment cache fallback instructions for interactive chat path
+- **Service user role** — added `adsb-enrichment-cache` to the index privileges
+- **API key role descriptor** (README.md) — added `adsb-enrichment-cache` to the index list
+
 ## [1.6.2] - 2026-03-19
 
 ### Changed

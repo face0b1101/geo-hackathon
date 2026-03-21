@@ -16,6 +16,8 @@ notifications.
 | `squawk-7500-hijack-investigation.yaml` | Alert + manual                           | End-to-end hijack signal investigation with case management        |
 | `squawk-7500-enrich.yaml`               | Manual (agent tool)                      | Gather enrichment data for a squawk 7500 investigation             |
 | `squawk-7500-create-case.yaml`          | Manual (agent tool)                      | Create or update a Kibana case for a squawk 7500 investigation     |
+| `adsb-aircraft-history.yaml`            | Manual (agent tool)                      | Aircraft history report — aggregations, positions, cases, adsbdb, adsb.lol |
+| `hijack-cases-summary.yaml`             | Manual (agent tool)                      | Fetch squawk 7500 investigation cases for the daily briefing       |
 
 ## System overview
 
@@ -323,3 +325,53 @@ make setup
 
 See the project [README](../../README.md) and [AGENTS.md](../../AGENTS.md) for
 full setup instructions.
+
+## Workflow authoring tips
+
+Gotchas discovered during development. See also [Known Quirks](../../AGENTS.md#known-quirks)
+in AGENTS.md for the full list.
+
+### Indexing documents from step outputs
+
+The `elasticsearch.index` step type does not support `| json` filters or `${{ }}`
+type-preserving expressions in its `document` body. Nested objects are silently
+serialised as the string `[object Object]`.
+
+Use `elasticsearch.request` with `method: PUT` instead:
+
+```yaml
+- name: cache_result
+  type: elasticsearch.request
+  with:
+    method: PUT
+    path: "/my-index/_doc/{{ inputs.id }}"
+    body:
+      label: "{{ inputs.label }}"
+      data: "{{ steps.http_call.output | json }}"
+```
+
+The `| json` filter serialises the object as a JSON string that Elasticsearch
+stores as a `text` field. Consumers parse the string to access nested values.
+
+### Handling missing indices in `if` conditions
+
+When a step with `on-failure: continue: true` fails (e.g. searching an index
+that does not exist), its output is `null`. An `if` condition referencing that
+output evaluates unpredictably — `null` is not `0`, so
+`${{ steps.X.output.hits.total.value == 0 }}` is false when the step failed.
+Design for the first-run case where the index may not exist yet, or use
+always-write patterns instead of check-before-write.
+
+### Passing step data to agents
+
+Workflow `outputs` are not functional on Stack 9.3.x (quirk #4). Two patterns
+for getting external data to agents:
+
+1. **`ai.agent` step** (for autonomous workflows) — assemble all step outputs
+   into the agent message using `{{ steps.X.output | json:2 }}`. The agent
+   receives the data inline. Used by `squawk-7500-hijack-investigation`.
+
+2. **Cache index** (for agent-called tools) — write HTTP responses to an ES
+   index via `elasticsearch.request` PUT, then tell the agent to query the
+   cache index as a fallback. Used by `adsb-aircraft-history` and
+   `squawk-7500-enrich`.

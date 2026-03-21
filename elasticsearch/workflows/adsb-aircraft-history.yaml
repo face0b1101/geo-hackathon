@@ -1,0 +1,233 @@
+name: ADS-B Aircraft History Report
+description: >-
+  Generates a comprehensive history report for an individual aircraft over a
+  configurable time range — flight summary aggregations, position data,
+  airframe details from adsbdb, live position from adsb.lol, and related
+  Kibana investigation cases. Designed as a workflow tool for the ADS-B
+  tracking agent.
+enabled: true
+tags: ["adsb", "aircraft", "history", "report"]
+
+outputs:
+  flight_summary:
+    value: "${{ steps.flight_summary.output }}"
+  positions:
+    value: "${{ steps.positions.output }}"
+  cases:
+    value: "${{ steps.find_cases.output }}"
+  adsbdb_aircraft:
+    value: "${{ steps.adsbdb_aircraft.output }}"
+  adsblol_position:
+    value: "${{ steps.adsblol_position.output }}"
+
+consts:
+  indexName: "demos-aircraft-adsb"
+
+inputs:
+  - name: icao24
+    type: string
+    required: true
+    description: "ICAO 24-bit aircraft address (hex, e.g. 406bbb)"
+  - name: lookback
+    type: string
+    required: false
+    default: "now-24h"
+    description: "Lookback period in ES date math (e.g. now-24h, now-7d, now-48h)"
+
+triggers:
+  - type: manual
+
+steps:
+  # ------------------------------------------------------------------
+  # 1. Flight summary — aggregations for the aircraft over the time range
+  # ------------------------------------------------------------------
+  - name: flight_summary
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/demos-aircraft-adsb/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - term:
+                  icao24: "{{ inputs.icao24 }}"
+              - range:
+                  "@timestamp":
+                    gte: "{{ inputs.lookback }}"
+              - range:
+                  "@timestamp":
+                    gte: "now-30d"
+        aggs:
+          callsigns:
+            terms:
+              field: callsign
+              size: 100
+              order:
+                first_seen: asc
+            aggs:
+              first_seen:
+                min:
+                  field: "@timestamp"
+              last_seen:
+                max:
+                  field: "@timestamp"
+              airports:
+                terms:
+                  field: airport.iata_code
+                  size: 5
+          airports_visited:
+            terms:
+              field: airport.iata_code
+              size: 20
+            aggs:
+              airport_name:
+                terms:
+                  field: airport.name
+                  size: 1
+              activity:
+                terms:
+                  field: airport.activity
+          countries_overflown:
+            terms:
+              field: geo.NAME
+              size: 30
+          regions:
+            terms:
+              field: geo.SUBREGION
+              size: 15
+          origin_country:
+            terms:
+              field: origin_country
+              size: 1
+          altitude_stats:
+            filter:
+              term:
+                on_ground: false
+            aggs:
+              baro_altitude:
+                stats:
+                  field: baro_altitude
+              geo_altitude:
+                stats:
+                  field: geo_altitude
+          velocity_stats:
+            filter:
+              term:
+                on_ground: false
+            aggs:
+              speed:
+                stats:
+                  field: velocity
+          ground_vs_airborne:
+            terms:
+              field: on_ground
+          squawk_codes:
+            terms:
+              field: squawk
+              size: 10
+          time_range:
+            stats:
+              field: "@timestamp"
+          hourly_activity:
+            date_histogram:
+              field: "@timestamp"
+              calendar_interval: hour
+
+  # ------------------------------------------------------------------
+  # 2. Position samples — time-ordered position data for the aircraft
+  # ------------------------------------------------------------------
+  - name: positions
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/demos-aircraft-adsb/_search"
+      body:
+        size: 1000
+        query:
+          bool:
+            filter:
+              - term:
+                  icao24: "{{ inputs.icao24 }}"
+              - range:
+                  "@timestamp":
+                    gte: "{{ inputs.lookback }}"
+              - range:
+                  "@timestamp":
+                    gte: "now-30d"
+        sort:
+          - "@timestamp": asc
+        _source:
+          includes:
+            - "@timestamp"
+            - callsign
+            - latitude
+            - longitude
+            - baro_altitude
+            - velocity
+            - on_ground
+            - squawk
+            - airport.iata_code
+            - airport.name
+            - airport.activity
+            - geo.NAME
+
+  # ------------------------------------------------------------------
+  # 3. Related cases — Kibana cases tagged with this aircraft's icao24
+  # ------------------------------------------------------------------
+  - name: find_cases
+    type: kibana.request
+    with:
+      method: GET
+      path: "__SPACE_PREFIX__/api/cases/_find?tags=icao24:{{ inputs.icao24 }}&perPage=20&sortField=createdAt&sortOrder=desc"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 4. adsbdb — airframe details (type, registration, operator)
+  # ------------------------------------------------------------------
+  - name: adsbdb_aircraft
+    type: http
+    with:
+      url: "https://api.adsbdb.com/v0/aircraft/{{ inputs.icao24 | upcase }}"
+      method: GET
+    on-failure:
+      continue: true
+
+  # WORKAROUND(#9): Write adsbdb response to cache index
+  - name: cache_adsbdb
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/adsbdb:{{ inputs.icao24 }}"
+      body:
+        type: "adsbdb_aircraft"
+        icao24: "{{ inputs.icao24 }}"
+        raw: "{{ steps.adsbdb_aircraft.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 5. adsb.lol — current live position (always fetch fresh)
+  # ------------------------------------------------------------------
+  - name: adsblol_position
+    type: http
+    with:
+      url: "https://api.adsb.lol/v2/icao/{{ inputs.icao24 }}"
+      method: GET
+    on-failure:
+      continue: true
+
+  # WORKAROUND(#9): Write adsb.lol response to cache index
+  - name: cache_adsblol
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/adsblol:{{ inputs.icao24 }}"
+      body:
+        type: "adsblol_position"
+        icao24: "{{ inputs.icao24 }}"
+        raw: "{{ steps.adsblol_position.output | json }}"
+    on-failure:
+      continue: true

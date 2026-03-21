@@ -146,7 +146,8 @@ POST /_security/api_key
           "names": [
             "geo.shapes-world.countries-50m",
             "adsb-airports-geo",
-            "demos-aircraft-adsb*"
+            "demos-aircraft-adsb*",
+            "adsb-enrichment-cache"
           ],
           "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
         }
