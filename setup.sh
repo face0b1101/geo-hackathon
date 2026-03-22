@@ -833,17 +833,21 @@ deploy_agent() {
 }
 
 setup_agents() {
-  # Extract dashboard ID for agent instruction placeholders
-  local DASHBOARD_AIRCRAFT_DETAIL_ID
+  # Extract dashboard IDs for agent instruction placeholders
+  local DASHBOARD_AIRCRAFT_DETAIL_ID DASHBOARD_WORLD_OVERVIEW_ID
   DASHBOARD_AIRCRAFT_DETAIL_ID=$(jq -r \
     'select(.type == "dashboard" and .attributes.title == "Aircraft Detail") | .id' \
     elasticsearch/kibana/adsb-saved-objects.ndjson | head -1)
+  DASHBOARD_WORLD_OVERVIEW_ID=$(jq -r \
+    'select(.type == "dashboard" and .attributes.title == "Aircraft World Overview") | .id' \
+    elasticsearch/kibana/adsb-saved-objects.ndjson | head -1)
 
-  # ADS-B agent needs KB_ENDPOINT and dashboard ID substituted into instructions
+  # ADS-B agent needs KB_ENDPOINT and dashboard IDs substituted into instructions
   local adsb_agent_tmp
   adsb_agent_tmp=$(mktemp)
   sed -e "s|__KB_ENDPOINT__|${KB_BASE}|g" \
       -e "s|__DASHBOARD_AIRCRAFT_DETAIL_ID__|${DASHBOARD_AIRCRAFT_DETAIL_ID}|g" \
+      -e "s|__DASHBOARD_WORLD_OVERVIEW_ID__|${DASHBOARD_WORLD_OVERVIEW_ID}|g" \
       "elasticsearch/agents/adsb-agent.json" > "$adsb_agent_tmp"
 
   deploy_agent \
@@ -1616,6 +1620,100 @@ setup_workflows() {
     $'Generates a comprehensive history report for an individual aircraft over a configurable time range.\n\nInputs:\n- icao24 (required string): ICAO 24-bit aircraft address (hex, e.g. 406bbb)\n- lookback (optional string, default now-24h): lookback period in ES date math (e.g. now-24h, now-7d, now-48h)\n\nReturned step outputs:\n- flight_summary: aggregations — callsigns (ordered by first_seen, with time windows and airports), airports_visited, countries_overflown, regions, origin_country, altitude_stats, velocity_stats, ground_vs_airborne, squawk_codes, time_range, hourly_activity\n- positions: up to 1000 time-ordered position documents\n- find_cases: Kibana investigation cases tagged with the aircraft icao24\n- adsbdb_aircraft: airframe details (type, registration, operator) from adsbdb\n- adsblol_position: current live position from adsb.lol\n\nStack 9.3.x workaround: HTTP step outputs may be null. The workflow caches enrichment responses in the adsb-enrichment-cache index. Query by _id: adsbdb:{icao24} and adsblol:{icao24}.\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
     '["adsb", "aircraft", "history"]'
   rm -f "$hist_tmp"
+
+  # --- Deploy airport activity report workflow ---
+  step_label "Deploying airport activity report workflow"
+
+  local arpt_yaml
+  local _arpt_yaml_content _arpt_name
+  _arpt_yaml_content=$(sed -e "s|__SPACE_PREFIX__|${_space_prefix}|g" \
+    "elasticsearch/workflows/adsb-airport-activity.yaml")
+  _arpt_name=$(echo "$_arpt_yaml_content" | grep -m1 '^name:' | sed 's/^name:[[:space:]]*//')
+  arpt_yaml=$(echo "$_arpt_yaml_content" | jq -Rs '{yaml: .}')
+  arpt_name_json=$(jq -n --arg name "$_arpt_name" '{name: $name}')
+
+  local arpt_tmp
+  arpt_tmp=$(mktemp)
+
+  local arpt_search_http existing_arpt_id=""
+  arpt_search_http=$(curl -s -w '%{http_code}' -o "$arpt_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X POST "$KB_BASE/api/workflows/search" \
+    -H "kbn-xsrf: true" \
+    -H "x-elastic-internal-origin: kibana" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "ADS-B Airport Activity Report", "limit": 1}')
+
+  if [[ "$arpt_search_http" -ge 200 && "$arpt_search_http" -lt 300 ]]; then
+    existing_arpt_id=$(jq -r '(.workflows // .results // [])[] | select(.name == "ADS-B Airport Activity Report") | .id' < "$arpt_tmp" 2>/dev/null | head -1 || true)
+  fi
+
+  local arpt_http
+  if [[ -n "$existing_arpt_id" ]]; then
+    if [[ "$FORCE" == "true" ]]; then
+      echo "  Workflow exists — updating (--force)"
+      arpt_http=$(curl -s -w '%{http_code}' -o "$arpt_tmp" \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$existing_arpt_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$arpt_yaml")
+      curl -s -o /dev/null \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$existing_arpt_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$arpt_name_json"
+    else
+      echo "  Already exists — skipping"
+      local arpt_wf_id="$existing_arpt_id"
+      register_wf_tool "adsb-airport-activity" "$arpt_wf_id" \
+        $'Generates a comprehensive airport activity report over a configurable time range using ES|QL.\n\nInputs:\n- airport (required string): airport name, IATA code, or ICAO/GPS code (e.g. LHR, Heathrow, EGLL). The workflow resolves free-text input automatically via case-insensitive matching.\n- lookback (optional string, default 24 hours): lookback period as an ES|QL time interval (e.g. 24 hours, 7 days, 48 hours)\n\nReturned step outputs (ES|QL columnar format — columns + values arrays):\n- resolve_airport: up to 5 matching airports (doc_count, airport.iata_code, airport.name, airport.type, airport.wikipedia)\n- traffic_summary: unique_aircraft, unique_flights, total_obs, first_seen, last_seen\n- activity_breakdown: unique_flights, unique_aircraft by airport.activity\n- hourly_traffic: unique_aircraft by hour\n- top_flights: first_seen, last_seen, origins, activities by callsign (up to 25)\n- origin_countries: unique_aircraft by origin_country (up to 15)\n- emergency_squawks: unique_aircraft by squawk (7500/7600/7700 only)\n- recent_positions: up to 500 recent position observations\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+        '["adsb", "airport", "activity"]'
+      rm -f "$arpt_tmp"
+    fi
+  else
+    arpt_http=$(curl -s -w '%{http_code}' -o "$arpt_tmp" \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -X POST "$KB_BASE/api/workflows" \
+      -H "kbn-xsrf: true" \
+      -H "x-elastic-internal-origin: kibana" \
+      -H "Content-Type: application/json" \
+      -d "$arpt_yaml")
+  fi
+
+  if [[ -n "$existing_arpt_id" && "$FORCE" != "true" ]]; then
+    : # already handled above (skip branch)
+  else
+    if [[ "$arpt_http" -lt 200 || "$arpt_http" -ge 300 ]]; then
+      echo "  FAILED (HTTP $arpt_http):" >&2
+      cat "$arpt_tmp" >&2
+      rm -f "$arpt_tmp"
+      exit 1
+    fi
+
+    local arpt_wf_id
+    arpt_wf_id=$(jq -r '.id // empty' < "$arpt_tmp" 2>/dev/null || true)
+
+    if [[ -z "$existing_arpt_id" && -n "$arpt_wf_id" ]]; then
+      curl -s -o /dev/null \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$arpt_wf_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$arpt_name_json"
+    fi
+
+    echo "  OK (HTTP $arpt_http) — workflow ID: ${arpt_wf_id:-unknown}"
+
+    register_wf_tool "adsb-airport-activity" "$arpt_wf_id" \
+      $'Generates a comprehensive airport activity report over a configurable time range using ES|QL.\n\nInputs:\n- airport (required string): airport name, IATA code, or ICAO/GPS code (e.g. LHR, Heathrow, EGLL). The workflow resolves free-text input automatically via case-insensitive matching.\n- lookback (optional string, default 24 hours): lookback period as an ES|QL time interval (e.g. 24 hours, 7 days, 48 hours)\n\nReturned step outputs (ES|QL columnar format — columns + values arrays):\n- resolve_airport: up to 5 matching airports (doc_count, airport.iata_code, airport.name, airport.type, airport.wikipedia)\n- traffic_summary: unique_aircraft, unique_flights, total_obs, first_seen, last_seen\n- activity_breakdown: unique_flights, unique_aircraft by airport.activity\n- hourly_traffic: unique_aircraft by hour\n- top_flights: first_seen, last_seen, origins, activities by callsign (up to 25)\n- origin_countries: unique_aircraft by origin_country (up to 15)\n- emergency_squawks: unique_aircraft by squawk (7500/7600/7700 only)\n- recent_positions: up to 500 recent position observations\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+      '["adsb", "airport", "activity"]'
+  fi
+  rm -f "$arpt_tmp"
 
   # --- Deploy hijack cases summary workflow ---
   step_label "Deploying hijack cases summary workflow"

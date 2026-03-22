@@ -16,7 +16,8 @@ notifications.
 | `squawk-7500-hijack-investigation.yaml` | Alert + manual                           | End-to-end hijack signal investigation with case management        |
 | `squawk-7500-enrich.yaml`               | Manual (agent tool)                      | Gather enrichment data for a squawk 7500 investigation             |
 | `squawk-7500-create-case.yaml`          | Manual (agent tool)                      | Create or update a Kibana case for a squawk 7500 investigation     |
-| `adsb-aircraft-history.yaml`            | Manual (agent tool)                      | Aircraft history report — aggregations, positions, cases, adsbdb, adsb.lol |
+| `adsb-aircraft-history.yaml`            | Manual (agent tool)                      | Aircraft history report — aggregations, positions, external APIs   |
+| `adsb-airport-activity.yaml`            | Manual (agent tool)                      | Airport activity report — ES\|QL traffic, flights, hourly profile  |
 | `hijack-cases-summary.yaml`             | Manual (agent tool)                      | Fetch squawk 7500 investigation cases for the daily briefing       |
 
 ## System overview
@@ -38,9 +39,12 @@ flowchart LR
         HijackInvestigation["Squawk 7500\nHijack Investigation"]
         Enrich["Squawk 7500\nEnrich"]
         CreateCase["Squawk 7500\nCreate Case"]
+        AircraftHistory["ADS-B Aircraft\nHistory"]
+        AirportActivity["ADS-B Airport\nActivity (ES|QL)"]
     end
 
     subgraph agents [AI Agents]
+        TrackingAgent["ADS-B Tracking\nSpecialist"]
         BriefingAgent["Daily Briefing\nAnalyst"]
         HijackAgent["Hijack Assessment\nAnalyst"]
     end
@@ -57,12 +61,17 @@ flowchart LR
     Manual --> AggStats
     Manual --> Enrich
     Manual --> CreateCase
+    Manual --> AircraftHistory
+    Manual --> AirportActivity
 
     DailyBriefing -->|"step: aggregate"| AggStats
     DailyBriefing -->|"step: ai.agent"| BriefingAgent
     DailyBriefing --> Slack
 
     BriefingAgent -.->|"workflow tool"| AggStats
+
+    TrackingAgent -.->|"workflow tool"| AircraftHistory
+    TrackingAgent -.->|"workflow tool"| AirportActivity
 
     HijackInvestigation -->|"step: ai.agent"| HijackAgent
     HijackInvestigation --> Slack
@@ -72,6 +81,9 @@ flowchart LR
 
     HijackAgent -.->|"workflow tool"| Enrich
     HijackAgent -.->|"workflow tool"| CreateCase
+
+    AircraftHistory --> adsbdb
+    AircraftHistory --> adsblol
 
     Enrich --> adsbdb
     Enrich --> adsblol
@@ -280,11 +292,133 @@ flowchart TD
 
 ______________________________________________________________________
 
+## 6. ADS-B Aircraft History Report
+
+**File:** `adsb-aircraft-history.yaml`
+**Trigger:** manual (registered as a workflow tool for the ADS-B Tracking Specialist)
+**Index:** `demos-aircraft-adsb`
+**External APIs:** adsbdb, adsb.lol
+**Tags:** `adsb`, `aircraft`, `history`, `report`
+
+Generates a comprehensive history report for an individual aircraft over a
+configurable time range. Includes flight summary aggregations, time-ordered
+position data, related Kibana cases, airframe details from adsbdb, and live
+position from adsb.lol. Designed as a workflow tool for the ADS-B Tracking
+Specialist agent.
+
+**Inputs:**
+
+| Name       | Type   | Required | Default    | Description                           |
+| ---------- | ------ | -------- | ---------- | ------------------------------------- |
+| `icao24`   | string | yes      | —          | ICAO 24-bit aircraft address (hex)    |
+| `lookback` | string | no       | `now-24h`  | Lookback period in ES date math       |
+
+```mermaid
+flowchart TD
+    Trigger["Manual trigger\nor agent tool call"] --> Summary["1. flight_summary\nAggregations over\ntime range"]
+    Trigger --> Positions["2. positions\nTime-ordered\nposition samples"]
+    Trigger --> Cases["3. find_cases\nKibana cases\ntagged with icao24"]
+    Trigger --> adsbdb["4. adsbdb_aircraft\nAirframe details"]
+    Trigger --> adsblol["5. adsblol_position\nLive position"]
+
+    Summary --> Output["Combined\nreport data"]
+    Positions --> Output
+    Cases --> Output
+    adsbdb --> Output
+    adsblol --> Output
+```
+
+______________________________________________________________________
+
+## 7. ADS-B Airport Activity Report
+
+**File:** `adsb-airport-activity.yaml`
+**Trigger:** manual (registered as a workflow tool for the ADS-B Tracking Specialist)
+**Index:** `demos-aircraft-adsb`
+**Tags:** `adsb`, `airport`, `activity`, `report`, `esql`
+
+Generates a comprehensive activity report for an airport over a configurable
+time range. This is the first ES|QL workflow in the project — all eight steps
+use `elasticsearch.esql.query` instead of Query DSL. Accepts free-text airport
+names (e.g. "Heathrow"), IATA codes (e.g. "LHR"), or ICAO/GPS codes (e.g.
+"EGLL") and resolves them via case-insensitive matching.
+
+**Inputs:**
+
+| Name       | Type   | Required | Default    | Description                                      |
+| ---------- | ------ | -------- | ---------- | ------------------------------------------------ |
+| `airport`  | string | yes      | —          | Airport name, IATA code, or ICAO/GPS code        |
+| `lookback` | string | no       | `now-24h`  | Lookback period in ES date math                  |
+
+**Steps:**
+
+| #  | Step name            | What it returns                                                         |
+| -- | -------------------- | ----------------------------------------------------------------------- |
+| 1  | `resolve_airport`    | Up to 5 matching airports (IATA code, name, type, Wikipedia link)       |
+| 2  | `traffic_summary`    | Unique aircraft, unique flights, total observations, time range         |
+| 3  | `activity_breakdown` | Deduplicated flight counts by activity (arriving, departing, etc.)      |
+| 4  | `hourly_traffic`     | Unique aircraft per hour (for peak/quiet analysis)                      |
+| 5  | `top_flights`        | Up to 25 callsigns with time windows, origin countries, activity        |
+| 6  | `origin_countries`   | Up to 15 countries by unique aircraft count                             |
+| 7  | `emergency_squawks`  | Unique aircraft per emergency squawk code (7500, 7600, 7700)            |
+| 8  | `recent_positions`   | Up to 500 recent position observations with full field set              |
+
+All steps return ES|QL columnar output (`columns` + `values` arrays).
+
+```mermaid
+flowchart TD
+    Trigger["Manual trigger\nor agent tool call"] --> Resolve["1. resolve_airport\nMatch input to\nIATA code(s)"]
+    Resolve --> Summary["2. traffic_summary"]
+    Resolve --> Activity["3. activity_breakdown"]
+    Resolve --> Hourly["4. hourly_traffic"]
+    Resolve --> Flights["5. top_flights"]
+    Resolve --> Countries["6. origin_countries"]
+    Resolve --> Squawks["7. emergency_squawks"]
+    Resolve --> Positions["8. recent_positions"]
+
+    Summary --> Output["Combined\nES|QL results"]
+    Activity --> Output
+    Hourly --> Output
+    Flights --> Output
+    Countries --> Output
+    Squawks --> Output
+    Positions --> Output
+```
+
+______________________________________________________________________
+
+## 8. Hijack Cases Summary
+
+**File:** `hijack-cases-summary.yaml`
+**Trigger:** manual (registered as a workflow tool)
+**Tags:** `adsb`, `squawk-7500`, `cases`, `briefing`
+
+Fetches squawk 7500 (hijack) investigation cases from Kibana case management.
+Returns case titles, tags (including `triage:genuine` or `triage:false_positive`),
+and status for use in the daily briefing or interactive queries.
+
+```mermaid
+flowchart LR
+    Trigger["Manual trigger"] --> Fetch["fetch_cases\nGET /api/cases/_find\ntags=squawk-7500"]
+    Fetch --> Output["Cases array"]
+```
+
+______________________________________________________________________
+
 ## AI agents
 
-Two AI agents are deployed alongside these workflows. Each agent can be used
+Three AI agents are deployed alongside these workflows. Each agent can be used
 directly via the Kibana Agent Builder chat interface, and each has workflow tools
 registered so it can trigger workflows on the user's behalf.
+
+### ADS-B Tracking Specialist (`adsb_agent`)
+
+- **Config:** `../agents/adsb-agent.json`
+- **Workflow tools:** `adsb-aircraft-history`, `adsb-airport-activity`
+- **Role:** General-purpose flight tracking and ad-hoc ADS-B queries. Uses the
+  Aircraft History workflow for per-aircraft reports and the Airport Activity
+  workflow for per-airport reports. Also has direct Elasticsearch platform tools
+  for ad-hoc queries.
 
 ### Daily Briefing Analyst (`adsb_daily_briefing_agent`)
 

@@ -1,0 +1,305 @@
+name: ADS-B Airport Activity Report
+description: >-
+  Generates a comprehensive activity report for an airport over a configurable
+  time range using ES|QL queries — airport resolution, traffic summary, activity
+  breakdown, hourly profile, top flights, origin countries, emergency squawks,
+  and recent positions. Designed as a workflow tool for the ADS-B tracking agent.
+enabled: true
+tags: ["adsb", "airport", "activity", "report", "esql"]
+
+outputs:
+  resolve_airport:
+    value: "${{ steps.resolve_airport.output }}"
+  traffic_summary:
+    value: "${{ steps.traffic_summary.output }}"
+  activity_breakdown:
+    value: "${{ steps.activity_breakdown.output }}"
+  hourly_traffic:
+    value: "${{ steps.hourly_traffic.output }}"
+  top_flights:
+    value: "${{ steps.top_flights.output }}"
+  origin_countries:
+    value: "${{ steps.origin_countries.output }}"
+  emergency_squawks:
+    value: "${{ steps.emergency_squawks.output }}"
+  recent_positions:
+    value: "${{ steps.recent_positions.output }}"
+
+inputs:
+  - name: airport
+    type: string
+    required: true
+    description: "Airport name, IATA code, or ICAO/GPS code (e.g. LHR, Heathrow, EGLL)"
+  - name: lookback
+    type: string
+    required: false
+    default: "24 hours"
+    description: "Lookback period as an ES|QL time interval (e.g. 24 hours, 7 days, 48 hours)"
+
+triggers:
+  - type: manual
+
+steps:
+  # ------------------------------------------------------------------
+  # 1. Resolve airport — match free-text input to IATA code(s)
+  # ------------------------------------------------------------------
+  - name: resolve_airport
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | STATS doc_count = COUNT(*)
+            BY airport.iata_code, airport.name, airport.type, airport.wikipedia
+        | SORT doc_count DESC
+        | LIMIT 5
+
+  # WORKAROUND(#9): Cache resolve_airport output for agent fallback
+  - name: cache_resolve_airport
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:resolve:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_resolve"
+        airport: "{{ inputs.airport }}"
+        step: "resolve_airport"
+        raw: "{{ steps.resolve_airport.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 2. Traffic summary — unique aircraft, flights, time range
+  # ------------------------------------------------------------------
+  - name: traffic_summary
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | STATS unique_aircraft = COUNT_DISTINCT(icao24),
+                unique_flights = COUNT_DISTINCT(CONCAT(icao24, ":", callsign)),
+                total_obs = COUNT(*),
+                first_seen = MIN(@timestamp),
+                last_seen = MAX(@timestamp)
+
+  # WORKAROUND(#9): Cache traffic_summary output
+  - name: cache_traffic_summary
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:traffic:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_traffic"
+        airport: "{{ inputs.airport }}"
+        step: "traffic_summary"
+        raw: "{{ steps.traffic_summary.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 3. Activity breakdown — arriving, departing, taxiing, etc.
+  # ------------------------------------------------------------------
+  - name: activity_breakdown
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | STATS unique_flights = COUNT_DISTINCT(CONCAT(icao24, ":", callsign)),
+                unique_aircraft = COUNT_DISTINCT(icao24)
+            BY airport.activity
+        | SORT unique_flights DESC
+
+  # WORKAROUND(#9): Cache activity_breakdown output
+  - name: cache_activity_breakdown
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:activity:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_breakdown"
+        airport: "{{ inputs.airport }}"
+        step: "activity_breakdown"
+        raw: "{{ steps.activity_breakdown.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 4. Hourly traffic — unique aircraft per hour
+  # ------------------------------------------------------------------
+  - name: hourly_traffic
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | STATS unique_aircraft = COUNT_DISTINCT(icao24)
+            BY hour = DATE_TRUNC(1 hour, @timestamp)
+        | SORT hour ASC
+
+  # WORKAROUND(#9): Cache hourly_traffic output
+  - name: cache_hourly_traffic
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:hourly:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_hourly"
+        airport: "{{ inputs.airport }}"
+        step: "hourly_traffic"
+        raw: "{{ steps.hourly_traffic.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 5. Top flights — callsigns with time windows and metadata
+  # ------------------------------------------------------------------
+  - name: top_flights
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | STATS first_seen = MIN(@timestamp),
+                last_seen = MAX(@timestamp),
+                origins = VALUES(origin_country),
+                activities = VALUES(airport.activity)
+            BY callsign
+        | SORT first_seen ASC
+        | LIMIT 25
+
+  # WORKAROUND(#9): Cache top_flights output
+  - name: cache_top_flights
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:flights:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_flights"
+        airport: "{{ inputs.airport }}"
+        step: "top_flights"
+        raw: "{{ steps.top_flights.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 6. Origin countries — registrations by country
+  # ------------------------------------------------------------------
+  - name: origin_countries
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | STATS unique_aircraft = COUNT_DISTINCT(icao24) BY origin_country
+        | SORT unique_aircraft DESC
+        | LIMIT 15
+
+  # WORKAROUND(#9): Cache origin_countries output
+  - name: cache_origin_countries
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:countries:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_countries"
+        airport: "{{ inputs.airport }}"
+        step: "origin_countries"
+        raw: "{{ steps.origin_countries.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 7. Emergency squawks — 7500/7600/7700 if any
+  # ------------------------------------------------------------------
+  - name: emergency_squawks
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | WHERE squawk IN ("7500", "7600", "7700")
+        | STATS unique_aircraft = COUNT_DISTINCT(icao24) BY squawk
+
+  # WORKAROUND(#9): Cache emergency_squawks output
+  - name: cache_emergency_squawks
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:squawks:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_squawks"
+        airport: "{{ inputs.airport }}"
+        step: "emergency_squawks"
+        raw: "{{ steps.emergency_squawks.output | json }}"
+    on-failure:
+      continue: true
+
+  # ------------------------------------------------------------------
+  # 8. Recent positions — latest 500 observations
+  # ------------------------------------------------------------------
+  - name: recent_positions
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: >
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }} AND @timestamp >= NOW() - 30 DAYS
+        | WHERE airport.iata_code == "{{ inputs.airport }}"
+            OR TO_LOWER(airport.name) LIKE "*{{ inputs.airport | downcase }}*"
+            OR TO_LOWER(airport.name_en) LIKE "*{{ inputs.airport | downcase }}*"
+            OR airport.gps_code == "{{ inputs.airport }}"
+        | SORT @timestamp DESC
+        | LIMIT 500
+        | KEEP @timestamp, icao24, callsign, latitude, longitude, baro_altitude,
+               velocity, on_ground, airport.activity, origin_country, squawk
+
+  # WORKAROUND(#9): Cache recent_positions output
+  - name: cache_recent_positions
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/airport-activity:positions:{{ inputs.airport | downcase }}"
+      body:
+        type: "airport_activity_positions"
+        airport: "{{ inputs.airport }}"
+        step: "recent_positions"
+        raw: "{{ steps.recent_positions.output | json }}"
+    on-failure:
+      continue: true

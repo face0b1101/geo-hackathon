@@ -41,6 +41,8 @@ flowchart LR
     end
 
     subgraph workflowTools [Workflow Tools]
+        AircraftHistory["adsb-aircraft-history"]
+        AirportActivity["adsb-airport-activity"]
         AggStats["adsb-aggregate-stats"]
         Enrich["squawk-7500-enrich"]
         CreateCase["squawk-7500-create-case"]
@@ -53,6 +55,8 @@ flowchart LR
     TrackingAgent --> GetMapping
     TrackingAgent --> GetDoc
     TrackingAgent --> WfStatus
+    TrackingAgent --> AircraftHistory
+    TrackingAgent --> AirportActivity
 
     BriefingAgent --> Search
     BriefingAgent --> WfStatus
@@ -64,6 +68,8 @@ flowchart LR
     HijackAgent --> CreateCase
 
     Search --> ES
+    AircraftHistory --> ES
+    AirportActivity --> ES
     AggStats --> ES
     Enrich --> ES
 ```
@@ -82,19 +88,21 @@ ______________________________________________________________________
 **Index:** `demos-aircraft-adsb`
 
 A general-purpose agent for querying and analysing live ADS-B flight data. It
-has direct access to Elasticsearch platform tools and no workflow tools --
-everything it does is conversational search and aggregation against the
-`demos-aircraft-adsb` index.
+has direct access to Elasticsearch platform tools for ad-hoc queries and two
+workflow tools for structured reports: per-aircraft history and per-airport
+activity.
 
 **Tools:**
 
-| Tool                                          | Purpose                    |
-| --------------------------------------------- | -------------------------- |
-| `platform.core.search`                        | Query the ADS-B index      |
-| `platform.core.list_indices`                  | Discover available indices |
-| `platform.core.get_index_mapping`             | Inspect field mappings     |
-| `platform.core.get_document_by_id`            | Fetch a single document    |
-| `platform.core.get_workflow_execution_status` | Check workflow run status  |
+| Tool                                          | Purpose                                           |
+| --------------------------------------------- | ------------------------------------------------- |
+| `platform.core.search`                        | Query the ADS-B index                             |
+| `platform.core.list_indices`                  | Discover available indices                        |
+| `platform.core.get_index_mapping`             | Inspect field mappings                            |
+| `platform.core.get_document_by_id`            | Fetch a single document                           |
+| `platform.core.get_workflow_execution_status` | Check workflow run status                         |
+| `adsb-aircraft-history`                       | Aircraft history report (aggregations + external) |
+| `adsb-airport-activity`                       | Airport activity report (ES\|QL)                  |
 
 **Capabilities:**
 
@@ -104,14 +112,20 @@ everything it does is conversational search and aggregation against the
 - Run aggregations (flights by country, region, altitude bands)
 - Execute geospatial queries (bounding box, radius)
 - Track aircraft movements over time
+- Generate structured aircraft history reports (via `adsb-aircraft-history`)
+- Generate structured airport activity reports (via `adsb-airport-activity`)
 
 ```mermaid
 flowchart LR
     User["User chat"] --> Agent["ADS-B Tracking\nSpecialist"]
     Agent --> Search["search"]
     Agent --> Meta["list_indices\nget_index_mapping\nget_document_by_id"]
+    Agent --> AircraftHistory["adsb-aircraft-history"]
+    Agent --> AirportActivity["adsb-airport-activity"]
     Search --> ES[("demos-aircraft-adsb")]
     Meta --> ES
+    AircraftHistory --> ES
+    AirportActivity --> ES
 ```
 
 ______________________________________________________________________

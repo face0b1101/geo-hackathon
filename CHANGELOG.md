@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-03-22
+
+### Added
+
+- **Airport activity report workflow** (`adsb-airport-activity.yaml`) — new ES|QL workflow that generates a comprehensive activity report for an airport over a configurable time range; accepts free-text airport names (e.g. "Heathrow"), IATA codes ("LHR"), or ICAO/GPS codes ("EGLL") and resolves them via case-insensitive matching; eight `elasticsearch.esql.query` steps produce airport resolution, traffic summary, activity breakdown, hourly traffic profile, top flights, origin countries, emergency squawks, and recent positions
+- **Airport activity agent tool** — registered `adsb-airport-activity` as a workflow tool for the Aircraft ADS-B Tracking Specialist agent; added report format instructions covering 9-section structured markdown output, ES|QL columnar output parsing guidance, and enrichment cache fallback for Stack 9.3.x
+- **Enrichment cache for airport activity** — all 8 ES|QL query steps write their output to the `adsb-enrichment-cache` index (keyed `airport-activity:{step}:{airport}`), following the same WORKAROUND(#9) pattern used by `adsb-aircraft-history`; agents query the cache as a fallback when workflow `outputs` are null on Stack 9.3.x (quirk #4)
+
+### Changed
+
+- **ADS-B agent** (`adsb-agent.json`) — added `adsb-airport-activity` tool and full Airport Activity Report instructions section; `lookback` input uses ES|QL time intervals (`24 hours`, `7 days`) instead of ES date math
+- **`setup_agents()` in `setup.sh`** — now extracts and substitutes `__DASHBOARD_WORLD_OVERVIEW_ID__` alongside the existing `__DASHBOARD_AIRCRAFT_DETAIL_ID__` placeholder, fixing unresolved dashboard links in agent instructions
+- **`setup_workflows()` in `setup.sh`** — new deployment block for the airport activity workflow with `register_wf_tool` registration
+- **Workflows README** (`elasticsearch/workflows/README.md`) — added inventory entry, system overview mermaid diagram updates (tracking agent, aircraft history, airport activity), new documentation sections for Aircraft History (section 6), Airport Activity (section 7), and Hijack Cases Summary (section 8), and ADS-B Tracking Specialist to the agents section
+- **Agents README** (`elasticsearch/agents/README.md`) — updated Tracking Specialist tools table, capabilities list, and mermaid diagrams to reflect both workflow tools
+
 ## [1.7.0] - 2026-03-21
 
 ### Added
