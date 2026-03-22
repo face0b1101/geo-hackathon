@@ -72,11 +72,15 @@ If either HTTP call fails, the event is tagged `_httprequestfailure` and dropped
 
 ### AI Agent
 
-The setup script deploys an **Aircraft ADS-B Tracking Specialist** agent via the Kibana Agent Builder. The agent can answer natural-language questions about flight data - locate aircraft by callsign or ICAO24 address, query positions over geographic regions, analyse altitude and speed patterns, and aggregate flights by country or region.
+The setup script deploys three AI agents via the Kibana Agent Builder:
 
-Once deployed, the agent is available in Kibana under **AI Agents** (or via the `POST /api/agent_builder/converse` API).
+- **Aircraft ADS-B Tracking Specialist** — answers natural-language questions about flight data: locate aircraft by callsign or ICAO24, query positions over geographic regions, analyse altitude and speed patterns, and aggregate flights by country or region. Includes an **aircraft history report** tool that generates comprehensive reports for individual aircraft — flight itinerary with callsigns and airports, airframe details from [adsbdb](https://www.adsbdb.com), live position from [adsb.lol](https://adsb.lol), related Kibana cases, and a link to the Aircraft Detail dashboard.
+- **ADS-B Daily Briefing Analyst** — generates and discusses daily aviation briefings from aggregated ADS-B data.
+- **Squawk 7500 Hijack Assessment Analyst** — evaluates squawk 7500 (hijack) signals using flight history, external enrichment, and AI-powered false-positive analysis.
 
-Make sure you have an [LLM configured in Kibana](https://www.elastic.co/docs/explore-analyze/ai-features/llm-guides/llm-connectors), select the agent and throw some natural language querying its way.
+Once deployed, agents are available in Kibana under **AI Agents** (or via the `POST /api/agent_builder/converse` API).
+
+Make sure you have an [LLM configured in Kibana](https://www.elastic.co/docs/explore-analyze/ai-features/llm-guides/llm-connectors), select an agent and throw some natural language querying its way.
 
 ### Workflows
 
@@ -96,9 +100,11 @@ The setup script deploys several [Elastic Workflows](https://www.elastic.co/docs
 4. Invokes the **ADS-B Hijack Assessment** agent for AI-powered false-positive analysis
 5. Routes based on AI triage assessment — Slack notification for genuine threats, tagging for false positives
 
+**Aircraft History Report** — triggered by the ADS-B tracking agent when a user asks about a specific aircraft's recent movements (e.g. "where has 406bbb been in the last 30 days?"). The workflow gathers flight summary aggregations, position samples, airframe details from adsbdb, live position from adsb.lol, and related Kibana cases. The agent composes the data into a structured markdown report with a link to the Aircraft Detail dashboard.
+
 Supporting workflows (`squawk-7500-enrich`, `squawk-7500-create-case`, `hijack-cases-summary`, `adsb-aggregate-stats`) are deployed as agent tools.
 
-> **Known limitation (Stack 9.3.x)** — Elastic Workflows is a Preview feature, and behaviour may differ between deployment types. Workflow `outputs` are not yet functional on Elastic Stack / Cloud Hosted 9.3.x. Agent-tool workflows include `outputs` sections but the runtime ignores them, so agents receive `null` output and fall back to direct ES queries. External enrichment data (adsbdb, adsb.lol, GNews) is unavailable in the interactive chat path on affected deployments. This works correctly on Elastic Cloud Serverless. See [#9](https://github.com/face0b1101/adsb-demo/issues/9) for tracking.
+> **Known limitation (Stack 9.3.x)** — Elastic Workflows is a Preview feature, and behaviour may differ between deployment types. Workflow `outputs` are not yet functional on Elastic Stack / Cloud Hosted 9.3.x ([#9](https://github.com/face0b1101/adsb-demo/issues/9)). Agent-tool workflows include `outputs` sections but the runtime ignores them, so agents receive `null` output and fall back to direct ES queries. As a workaround, workflows with HTTP steps write external API responses to the `adsb-enrichment-cache` index; agents query this index as a fallback. This workaround will be removed once outputs are functional ([#12](https://github.com/face0b1101/adsb-demo/issues/12)). The feature works correctly on Elastic Cloud Serverless.
 
 > **Observability features** — This demo leverages Elastic Observability capabilities including the Observability solution view (Kibana space), Cases (`owner: observability`), and alerting (`consumer: observability`). The full experience requires a deployment that supports these features — see the [deployment comparison table](#getting-started-with-elasticsearch).
 
@@ -334,7 +340,8 @@ make setup FORCE=1
 │       ├── squawk-7500-hijack-investigation.yaml     # Workflow: alert-triggered hijack investigation
 │       ├── squawk-7500-enrich.yaml                   # Workflow: hijack enrichment (agent tool)
 │       ├── squawk-7500-create-case.yaml              # Workflow: case creation/update (agent tool)
-│       └── hijack-cases-summary.yaml                 # Workflow: hijack cases summary (agent tool)
+│       ├── hijack-cases-summary.yaml                 # Workflow: hijack cases summary (agent tool)
+│       └── adsb-aircraft-history.yaml                # Workflow: aircraft history report (agent tool)
 └── logstash/
     ├── config/
     │   ├── logstash.yml                              # Logstash node settings
