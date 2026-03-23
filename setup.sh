@@ -111,7 +111,7 @@ fi
 group_step_count() {
   case "$1" in
     space) echo 1 ;;  ilm)       echo 1 ;;
-    indices) echo 6 ;; enrich)   echo 4 ;;
+    indices) echo 9 ;; enrich)   echo 4 ;;
     pipelines) echo 2 ;; kibana) echo 1 ;;
     cases) echo 1 ;;  agents)    echo 3 ;;
     workflows) echo 13 ;;
@@ -530,6 +530,23 @@ setup_indices() {
 # Group: enrich
 # ---------------------------------------------------------------------------
 
+exec_enrich_policy() {
+  local policy_name="$1"
+  local exec_tmp exec_code
+  exec_tmp=$(mktemp)
+  exec_code=$(curl -s -w '%{http_code}' -o "$exec_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X POST "$BASE/_enrich/policy/$policy_name/_execute")
+  if [[ "$exec_code" -lt 200 || "$exec_code" -ge 300 ]]; then
+    echo "  FAILED (HTTP $exec_code):" >&2
+    cat "$exec_tmp" >&2
+    rm -f "$exec_tmp"
+    exit 1
+  fi
+  echo "  OK (HTTP $exec_code)"
+  rm -f "$exec_tmp"
+}
+
 setup_enrich_policy() {
   local policy_name="$1" policy_file="$2" label="$3"
 
@@ -554,61 +571,35 @@ setup_enrich_policy() {
         echo "  Could not delete (HTTP $del_code, likely referenced by a pipeline) — re-executing instead"
         rm -f "$del_tmp"
         step_label "Executing $label enrich policy"
-        local exec_tmp exec_code
-        exec_tmp=$(mktemp)
-        exec_code=$(curl -s -w '%{http_code}' -o "$exec_tmp" \
-          -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
-          -X POST "$BASE/_enrich/policy/$policy_name/_execute")
-        if [[ "$exec_code" -lt 200 || "$exec_code" -ge 300 ]]; then
-          echo "  FAILED (HTTP $exec_code):" >&2
-          cat "$exec_tmp" >&2
-          rm -f "$exec_tmp"
-          exit 1
-        fi
-        echo "  OK (HTTP $exec_code)"
-        rm -f "$exec_tmp"
+        exec_enrich_policy "$policy_name"
         return 0
       fi
     else
-      echo "  Already exists — skipping"
-      step_label "Executing $label enrich policy"
-      echo "  Skipped (policy unchanged)"
-      return 0
+      echo "  Already exists — skipping creation"
     fi
   fi
 
-  local tmp_file create_code
-  tmp_file=$(mktemp)
-  create_code=$(curl -s -w '%{http_code}' -o "$tmp_file" \
-    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
-    -X PUT "$BASE/_enrich/policy/$policy_name" \
-    -H "Content-Type: application/json" \
-    -d "@$policy_file")
+  if [[ "$check_code" != "200" ]] || [[ "$FORCE" == "true" ]]; then
+    local tmp_file create_code
+    tmp_file=$(mktemp)
+    create_code=$(curl -s -w '%{http_code}' -o "$tmp_file" \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -X PUT "$BASE/_enrich/policy/$policy_name" \
+      -H "Content-Type: application/json" \
+      -d "@$policy_file")
 
-  if [[ "$create_code" -lt 200 || "$create_code" -ge 300 ]]; then
-    echo "  FAILED (HTTP $create_code):" >&2
-    cat "$tmp_file" >&2
+    if [[ "$create_code" -lt 200 || "$create_code" -ge 300 ]]; then
+      echo "  FAILED (HTTP $create_code):" >&2
+      cat "$tmp_file" >&2
+      rm -f "$tmp_file"
+      exit 1
+    fi
+    echo "  OK (HTTP $create_code)"
     rm -f "$tmp_file"
-    exit 1
   fi
-  echo "  OK (HTTP $create_code)"
-  rm -f "$tmp_file"
 
   step_label "Executing $label enrich policy"
-  local exec_tmp exec_code
-  exec_tmp=$(mktemp)
-  exec_code=$(curl -s -w '%{http_code}' -o "$exec_tmp" \
-    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
-    -X POST "$BASE/_enrich/policy/$policy_name/_execute")
-
-  if [[ "$exec_code" -lt 200 || "$exec_code" -ge 300 ]]; then
-    echo "  FAILED (HTTP $exec_code):" >&2
-    cat "$exec_tmp" >&2
-    rm -f "$exec_tmp"
-    exit 1
-  fi
-  echo "  OK (HTTP $exec_code)"
-  rm -f "$exec_tmp"
+  exec_enrich_policy "$policy_name"
 }
 
 setup_enrich() {

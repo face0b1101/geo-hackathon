@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-03-23
+
+### Fixed
+
+- **Enrich policy execute skipped on re-run** — when `setup.sh` was re-run after a partial first run (e.g. policy created but `_execute` interrupted), the enrich policies were detected as existing and both creation and execution were skipped, causing ingest pipeline creation to fail with `no enrich index exists for policy`; the `_execute` step now always runs, ensuring the enrich index is built regardless of prior state ([#15](https://github.com/face0b1101/adsb-demo/issues/15))
+- **Incorrect step counter for indices group** — `group_step_count("indices")` declared 6 steps but `setup_index()` always emits 3 `step_label` calls per index (create + load + refresh); corrected to 9 so the progress indicator `[N/TOTAL]` is accurate
+
 ## [1.9.1] - 2026-03-23
 
 ### Fixed
@@ -395,4 +402,5 @@ Kibana dashboards.
 [1.8.0]: https://github.com/face0b1101/adsb-demo/compare/v1.7.0...v1.8.0
 [1.9.0]: https://github.com/face0b1101/adsb-demo/compare/v1.8.0...v1.9.0
 [1.9.1]: https://github.com/face0b1101/adsb-demo/compare/v1.9.0...v1.9.1
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.1...HEAD
+[1.9.2]: https://github.com/face0b1101/adsb-demo/compare/v1.9.1...v1.9.2
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.2...HEAD
