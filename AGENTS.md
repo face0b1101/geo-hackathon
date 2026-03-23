@@ -229,6 +229,17 @@ Concise policy reference for all coding agents touching this repository. Keep re
 - Never amend existing commits unless the user instructs you to.
 - Don't plaster all commits and git issues with "Made with Cursor", "Cursor helped me with this", "AI did everything" or anything similar.
 
+#### Releases
+
+When the user bumps the version or adds a new `CHANGELOG.md` entry, complete **all four** steps before finishing the task:
+
+1. **Tag** — create a signed annotated tag: `SSH_AUTH_SOCK="$HOME/.bitwarden-ssh-agent.sock" git tag -s -a v<VERSION> -m "<one-line summary>"`.
+2. **Push** — push the tag: `git push origin v<VERSION>`.
+3. **GitHub Release** — create the release: `gh release create v<VERSION> --title "v<VERSION> — <title>" --notes "<notes from CHANGELOG>"`. Mark the newest release `--latest`.
+4. **CHANGELOG links** — ensure the footer link-reference definitions include the new version and `[unreleased]` points from the new tag to `HEAD`.
+
+Never leave a CHANGELOG version without a matching git tag and GitHub Release.
+
 ### 5. Pre-flight Checklist
 
 1. Read the task, confirm assumptions, and outline the approach.
