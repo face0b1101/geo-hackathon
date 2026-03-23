@@ -7,12 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.9.2] - 2026-03-23
+## [1.9.3] - 2026-03-23
 
 ### Fixed
 
-- **Enrich policy execute skipped on re-run** — when `setup.sh` was re-run after a partial first run (e.g. policy created but `_execute` interrupted), the enrich policies were detected as existing and both creation and execution were skipped, causing ingest pipeline creation to fail with `no enrich index exists for policy`; the `_execute` step now always runs, ensuring the enrich index is built regardless of prior state ([#15](https://github.com/face0b1101/adsb-demo/issues/15))
-- **Incorrect step counter for indices group** — `group_step_count("indices")` declared 6 steps but `setup_index()` always emits 3 `step_label` calls per index (create + load + refresh); corrected to 9 so the progress indicator `[N/TOTAL]` is accurate
+- **Enrich policy existence check false positive** — `GET /_enrich/policy/<name>` returns HTTP 200 with an empty `policies: []` array when the policy does not exist; the existence check in `setup_enrich_policy()` compared only the HTTP status code, causing it to skip policy creation on every fresh cluster and then fail at `_execute` with `policy does not exist`; now parses the response body and checks `.policies | length > 0` before treating the policy as existing ([#15](https://github.com/face0b1101/adsb-demo/issues/15))
+- **Incorrect step counter for indices group** — `group_step_count("indices")` declared 6 steps but `setup_index()` always emits 3 `step_label` calls per index (create + load + refresh); corrected to 9
+- **Incorrect step counter for workflows group** — `group_step_count("workflows")` declared 13 steps but `setup_workflows()` emits 19 `step_label` calls (12 deploy/config steps + 7 `register_wf_tool` steps); corrected to 19
 
 ## [1.9.1] - 2026-03-23
 
@@ -403,4 +404,5 @@ Kibana dashboards.
 [1.9.0]: https://github.com/face0b1101/adsb-demo/compare/v1.8.0...v1.9.0
 [1.9.1]: https://github.com/face0b1101/adsb-demo/compare/v1.9.0...v1.9.1
 [1.9.2]: https://github.com/face0b1101/adsb-demo/compare/v1.9.1...v1.9.2
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.2...HEAD
+[1.9.3]: https://github.com/face0b1101/adsb-demo/compare/v1.9.2...v1.9.3
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.3...HEAD

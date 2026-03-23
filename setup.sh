@@ -114,7 +114,7 @@ group_step_count() {
     indices) echo 9 ;; enrich)   echo 4 ;;
     pipelines) echo 2 ;; kibana) echo 1 ;;
     cases) echo 1 ;;  agents)    echo 3 ;;
-    workflows) echo 13 ;;
+    workflows) echo 19 ;;
     *) echo 0 ;;
   esac
 }
@@ -552,11 +552,17 @@ setup_enrich_policy() {
 
   step_label "Creating $label enrich policy"
 
-  local check_resp check_code
+  local check_resp check_code check_body policy_exists=false
   check_resp=$(curl_es -X GET "$BASE/_enrich/policy/$policy_name" 2>/dev/null)
   check_code=$(http_code_of "$check_resp")
-
+  check_body=$(parse_response "$check_resp")
   if [[ "$check_code" == "200" ]]; then
+    local policy_count
+    policy_count=$(echo "$check_body" | jq -r '.policies | length' 2>/dev/null || echo "0")
+    [[ "$policy_count" -gt 0 ]] && policy_exists=true
+  fi
+
+  if [[ "$policy_exists" == "true" ]]; then
     if [[ "$FORCE" == "true" ]]; then
       echo "  Policy exists — attempting delete (--force)"
       local del_tmp del_code
@@ -579,7 +585,7 @@ setup_enrich_policy() {
     fi
   fi
 
-  if [[ "$check_code" != "200" ]] || [[ "$FORCE" == "true" ]]; then
+  if [[ "$policy_exists" != "true" ]] || [[ "$FORCE" == "true" ]]; then
     local tmp_file create_code
     tmp_file=$(mktemp)
     create_code=$(curl -s -w '%{http_code}' -o "$tmp_file" \
