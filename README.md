@@ -48,20 +48,22 @@ The OpenSky API requires an OAuth2 bearer token (client-credentials grant via Ke
 
 The pipelines work around this by chaining a `heartbeat` input with two `http` filter plugins:
 
-```txt
-heartbeat (every 360 s)
-  │
-  ▼
-http filter ── POST /token ──▶ Keycloak (OpenSky)
-  │                              │
-  │  [@metadata][token_response] ◀─ { access_token: "…" }
-  │
-  ▼
-http filter ── GET /states/all ──▶ OpenSky REST API
-  │            Authorization: Bearer <token>
-  │
-  ▼
-split / mutate / date ──▶ elasticsearch output
+```mermaid
+sequenceDiagram
+    participant HB as heartbeat (360s)
+    participant TK as http filter (token)
+    participant KC as Keycloak (OpenSky)
+    participant API as http filter (API call)
+    participant OSN as OpenSky REST API
+    participant OUT as split / mutate / date → ES
+
+    HB->>TK: synthetic event
+    TK->>KC: POST /token (client_credentials)
+    KC-->>TK: access_token → [@metadata]
+    TK->>API: event with token
+    API->>OSN: GET /states/all + Bearer token
+    OSN-->>API: ADS-B state vectors
+    API->>OUT: transform → index
 ```
 
 1. **`heartbeat` input** — generates a synthetic event every 360 seconds, acting as the poll timer.
