@@ -108,21 +108,20 @@ fi
 # Step counting
 # ---------------------------------------------------------------------------
 
-declare -A GROUP_STEPS=(
-  [space]=1
-  [ilm]=1
-  [indices]=6
-  [enrich]=4
-  [pipelines]=2
-  [kibana]=1
-  [cases]=1
-  [agents]=3
-  [workflows]=13
-)
+group_step_count() {
+  case "$1" in
+    space) echo 1 ;;  ilm)       echo 1 ;;
+    indices) echo 6 ;; enrich)   echo 4 ;;
+    pipelines) echo 2 ;; kibana) echo 1 ;;
+    cases) echo 1 ;;  agents)    echo 3 ;;
+    workflows) echo 13 ;;
+    *) echo 0 ;;
+  esac
+}
 
 TOTAL=0
 for g in $SELECTED_GROUPS; do
-  TOTAL=$((TOTAL + GROUP_STEPS[$g]))
+  TOTAL=$((TOTAL + $(group_step_count "$g")))
 done
 [[ "$SKIP_SERVICE_USER" == "false" ]] && TOTAL=$((TOTAL + 1))
 
