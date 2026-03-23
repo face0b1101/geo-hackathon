@@ -120,6 +120,26 @@ steps:
     on-failure:
       continue: true
 
+  - name: defunct_callsign_scan
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: |
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - 24 hours
+        | EVAL callsign_prefix = SUBSTRING(callsign, 0, 3)
+        | LOOKUP JOIN adsb-airlines-defunct ON callsign_prefix
+        | WHERE defunct_airline_name IS NOT NULL
+        | STATS aircraft_count = COUNT_DISTINCT(icao24),
+                last_seen = MAX(@timestamp),
+                callsigns = VALUES(callsign),
+                countries = VALUES(origin_country)
+          BY callsign_prefix, defunct_airline_name, defunct_country,
+             defunct_icao, operations.ceased.text
+        | SORT aircraft_count DESC
+    on-failure:
+      continue: true
+
   - name: generate_briefing
     type: ai.agent
     with:
@@ -141,7 +161,17 @@ steps:
 
         {{ steps.fetch_hijack_cases.output | json:2 }}
 
-        Include all sections from your Briefing Format (items 1–10).
+        === DEFUNCT CALLSIGN SCAN ===
+        The following callsign prefixes matched known defunct airlines in the
+        last 24 hours. Each row in the ES|QL columnar output contains:
+        callsign_prefix, defunct airline name, country, ICAO code, ceased date,
+        aircraft count, last seen, observed callsigns, and origin countries.
+        If this section is empty or shows an error, state "No defunct airline
+        callsign prefixes detected" and skip section 11.
+
+        {{ steps.defunct_callsign_scan.output | json:2 }}
+
+        Include all sections from your Briefing Format (items 1–11).
 
         IMPORTANT — deduplicated counts:
         Each bucket aggregation now contains a sub-aggregation with the

@@ -218,7 +218,7 @@ setup_serviceuser() {
     "cluster": ["manage", "manage_security"],
     "indices": [
       {
-        "names": ["geo.shapes-world.countries-50m", "adsb-airports-geo", "demos-aircraft-adsb*", "adsb-enrichment-cache"],
+        "names": ["geo.shapes-world.countries-50m", "adsb*", "demos-aircraft-adsb*"],
         "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
       }
     ],
@@ -519,6 +519,12 @@ setup_indices() {
     "elasticsearch/indices/adsb-airports-geo-mapping.json" \
     "data/adsb-airports-geo-data.ndjson" \
     "airports"
+
+  setup_index \
+    "adsb-airlines-defunct" \
+    "elasticsearch/indices/adsb-airlines-defunct-mapping.json" \
+    "data/adsb-airlines-defunct-data.ndjson" \
+    "defunct airlines"
 }
 
 # ---------------------------------------------------------------------------
@@ -1805,6 +1811,96 @@ setup_workflows() {
     $'Fetches squawk 7500 (hijack) investigation cases from Kibana case management. Returns case titles, tags (including triage:genuine or triage:false_positive), status, and creation dates.\n\nUse this to review hijack investigation outcomes — how many were genuine vs false positive. Cases are tagged with triage:genuine or triage:false_positive after AI triage assessment.\n\nResults are at output.cases (array) and output.total (count). This is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
     '["adsb", "squawk-7500", "cases"]'
   rm -f "$hcs_tmp"
+
+  # --- Deploy defunct callsign detector workflow ---
+  step_label "Deploying defunct callsign detector workflow"
+
+  local dcd_yaml
+  local _dcd_yaml_content _dcd_name
+  _dcd_yaml_content=$(cat "elasticsearch/workflows/adsb-defunct-callsign-detector.yaml")
+  _dcd_name=$(echo "$_dcd_yaml_content" | grep -m1 '^name:' | sed 's/^name:[[:space:]]*//')
+  dcd_yaml=$(echo "$_dcd_yaml_content" | jq -Rs '{yaml: .}')
+  dcd_name_json=$(jq -n --arg name "$_dcd_name" '{name: $name}')
+
+  local dcd_tmp
+  dcd_tmp=$(mktemp)
+
+  local dcd_search_http existing_dcd_id=""
+  dcd_search_http=$(curl -s -w '%{http_code}' -o "$dcd_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X POST "$KB_BASE/api/workflows/search" \
+    -H "kbn-xsrf: true" \
+    -H "x-elastic-internal-origin: kibana" \
+    -H "Content-Type: application/json" \
+    -d '{"query": "Defunct Callsign Detector", "limit": 1}')
+
+  if [[ "$dcd_search_http" -ge 200 && "$dcd_search_http" -lt 300 ]]; then
+    existing_dcd_id=$(jq -r '(.workflows // .results // [])[] | select(.name == "Defunct Callsign Detector") | .id' < "$dcd_tmp" 2>/dev/null | head -1 || true)
+  fi
+
+  local dcd_http
+  if [[ -n "$existing_dcd_id" ]]; then
+    if [[ "$FORCE" == "true" ]]; then
+      echo "  Workflow exists — updating (--force)"
+      dcd_http=$(curl -s -w '%{http_code}' -o "$dcd_tmp" \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$existing_dcd_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$dcd_yaml")
+      curl -s -o /dev/null \
+        -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+        -X PUT "$KB_BASE/api/workflows/$existing_dcd_id" \
+        -H "kbn-xsrf: true" \
+        -H "x-elastic-internal-origin: kibana" \
+        -H "Content-Type: application/json" \
+        -d "$dcd_name_json"
+    else
+      echo "  Already exists — skipping"
+      local dcd_wf_id="$existing_dcd_id"
+      register_wf_tool "adsb-defunct-callsign-detector" "$dcd_wf_id" \
+        $'Detects aircraft using callsign prefixes matching known defunct airlines. Cross-references ADS-B data against the adsb-airlines-defunct lookup index using ES|QL LOOKUP JOIN.\n\nInputs:\n- lookback (optional string, default 24 hours): lookback period as an ES|QL time interval (e.g. 24 hours, 7 days, 30 days). Max 30 days.\n\nReturns ES|QL columnar output (columns + values) with: callsign_prefix, defunct_airline_name, defunct_country, defunct_icao, operations.ceased.text, aircraft_count, last_seen, callsigns (array), countries (array).\n\nStack 9.3.x workaround: workflow output may be null. The workflow caches results in the adsb-enrichment-cache index with _id: defunct-callsign-detections. Query that document and parse the raw field (JSON string) as a fallback.\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+        '["adsb", "callsign", "defunct"]'
+      rm -f "$dcd_tmp"
+      return 0
+    fi
+  else
+    dcd_http=$(curl -s -w '%{http_code}' -o "$dcd_tmp" \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -X POST "$KB_BASE/api/workflows" \
+      -H "kbn-xsrf: true" \
+      -H "x-elastic-internal-origin: kibana" \
+      -H "Content-Type: application/json" \
+      -d "$dcd_yaml")
+  fi
+
+  if [[ "$dcd_http" -lt 200 || "$dcd_http" -ge 300 ]]; then
+    echo "  FAILED (HTTP $dcd_http):" >&2
+    cat "$dcd_tmp" >&2
+    rm -f "$dcd_tmp"
+    exit 1
+  fi
+
+  local dcd_wf_id
+  dcd_wf_id=$(jq -r '.id // empty' < "$dcd_tmp" 2>/dev/null || true)
+
+  if [[ -z "$existing_dcd_id" && -n "$dcd_wf_id" ]]; then
+    curl -s -o /dev/null \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      -X PUT "$KB_BASE/api/workflows/$dcd_wf_id" \
+      -H "kbn-xsrf: true" \
+      -H "x-elastic-internal-origin: kibana" \
+      -H "Content-Type: application/json" \
+      -d "$dcd_name_json"
+  fi
+
+  echo "  OK (HTTP $dcd_http) — workflow ID: ${dcd_wf_id:-unknown}"
+
+  register_wf_tool "adsb-defunct-callsign-detector" "${dcd_wf_id:-}" \
+    $'Detects aircraft using callsign prefixes matching known defunct airlines. Cross-references ADS-B data against the adsb-airlines-defunct lookup index using ES|QL LOOKUP JOIN.\n\nInputs:\n- lookback (optional string, default 24 hours): lookback period as an ES|QL time interval (e.g. 24 hours, 7 days, 30 days). Max 30 days.\n\nReturns ES|QL columnar output (columns + values) with: callsign_prefix, defunct_airline_name, defunct_country, defunct_icao, operations.ceased.text, aircraft_count, last_seen, callsigns (array), countries (array).\n\nStack 9.3.x workaround: workflow output may be null. The workflow caches results in the adsb-enrichment-cache index with _id: defunct-callsign-detections. Query that document and parse the raw field (JSON string) as a fallback.\n\nThis is an async workflow — poll with platform.core.get_workflow_execution_status until complete.' \
+    '["adsb", "callsign", "defunct"]'
+  rm -f "$dcd_tmp"
 }
 
 register_wf_tool() {

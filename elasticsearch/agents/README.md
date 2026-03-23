@@ -44,6 +44,7 @@ flowchart LR
         AircraftHistory["adsb-aircraft-history"]
         AirportActivity["adsb-airport-activity"]
         AggStats["adsb-aggregate-stats"]
+        DefunctCallsign["adsb-defunct-callsign-detector"]
         Enrich["squawk-7500-enrich"]
         CreateCase["squawk-7500-create-case"]
     end
@@ -57,6 +58,7 @@ flowchart LR
     TrackingAgent --> WfStatus
     TrackingAgent --> AircraftHistory
     TrackingAgent --> AirportActivity
+    TrackingAgent --> DefunctCallsign
 
     BriefingAgent --> Search
     BriefingAgent --> WfStatus
@@ -103,6 +105,7 @@ activity.
 | `platform.core.get_workflow_execution_status` | Check workflow run status                         |
 | `adsb-aircraft-history`                       | Aircraft history report (aggregations + external) |
 | `adsb-airport-activity`                       | Airport activity report (ES\|QL)                  |
+| `adsb-defunct-callsign-detector`              | Detect defunct airline callsign prefixes (ES\|QL) |
 
 **Capabilities:**
 
@@ -114,6 +117,7 @@ activity.
 - Track aircraft movements over time
 - Generate structured aircraft history reports (via `adsb-aircraft-history`)
 - Generate structured airport activity reports (via `adsb-airport-activity`)
+- Detect aircraft using callsign prefixes from known defunct airlines (via `adsb-defunct-callsign-detector`)
 
 ```mermaid
 flowchart LR
@@ -158,15 +162,16 @@ in the prompt and the agent formats them for Slack.
 
 **Briefing sections:**
 
-1. Total observations and unique aircraft
-2. Top 5 busiest airports (IATA + full name, unique flights)
-3. Top 5 origin countries (unique aircraft)
-4. Airport activity breakdown (arriving, departing, taxiing, overflight, at_airport)
-5. Regional traffic (top 10 UN subregions)
-6. Continent overview
-7. Ground vs airborne ratio
-8. Emergency squawks (7500, 7600, 7700)
-9. Notable findings
+01. Total observations and unique aircraft
+02. Top 5 busiest airports (IATA + full name, unique flights)
+03. Top 5 origin countries (unique aircraft)
+04. Airport activity breakdown (arriving, departing, taxiing, overflight, at_airport)
+05. Regional traffic (top 10 UN subregions)
+06. Continent overview
+07. Ground vs airborne ratio
+08. Emergency squawks (7500, 7600, 7700)
+09. Notable findings
+10. Defunct callsign detections
 
 ```mermaid
 flowchart TD
@@ -199,11 +204,11 @@ build an evidence-based assessment.
 
 **Tools:**
 
-| Tool                                          | Purpose                                               |
-| --------------------------------------------- | ----------------------------------------------------- |
-| `platform.core.search`                        | Ad-hoc queries against ADS-B data                     |
-| `platform.core.get_workflow_execution_status` | Poll workflow completion                              |
-| `squawk-7500-enrich`                          | Gather flight history, adsbdb, adsb.lol, GNews data   |
+| Tool                                          | Purpose                                                   |
+| --------------------------------------------- | --------------------------------------------------------- |
+| `platform.core.search`                        | Ad-hoc queries against ADS-B data                         |
+| `platform.core.get_workflow_execution_status` | Poll workflow completion                                  |
+| `squawk-7500-enrich`                          | Gather flight history, adsbdb, adsb.lol, GNews data       |
 | `squawk-7500-create-case`                     | Create or update a Kibana case with the triage assessment |
 
 ### Operating modes

@@ -1,0 +1,66 @@
+name: Defunct Callsign Detector
+description: >-
+  Detects aircraft broadcasting callsign prefixes that match known defunct
+  airlines. Cross-references ADS-B data against the adsb-airlines-defunct
+  lookup index using ES|QL LOOKUP JOIN. Default lookback is 24 hours;
+  configurable up to 30 days. Results are investigative leads — matches may
+  indicate stale transponder configs, reallocated ICAO designators, or
+  genuinely suspicious activity.
+enabled: true
+tags: ["adsb", "callsign", "defunct", "esql"]
+
+outputs:
+  detections:
+    value: "${{ steps.detect_defunct_callsigns.output }}"
+
+inputs:
+  - name: lookback
+    type: string
+    required: false
+    default: "24 hours"
+    description: "Lookback period as an ES|QL time interval (e.g. 24 hours, 7 days, 30 days). Max 30 days."
+
+triggers:
+  - type: manual
+  - type: scheduled
+    with:
+      rrule:
+        freq: DAILY
+        interval: 1
+        tzid: Europe/London
+        byhour: [7]
+        byminute: [30]
+
+steps:
+  - name: detect_defunct_callsigns
+    type: elasticsearch.esql.query
+    with:
+      format: json
+      query: |
+        FROM demos-aircraft-adsb
+        | WHERE @timestamp >= NOW() - {{ inputs.lookback }}
+        | EVAL callsign_prefix = SUBSTRING(callsign, 0, 3)
+        | LOOKUP JOIN adsb-airlines-defunct ON callsign_prefix
+        | WHERE defunct_airline_name IS NOT NULL
+        | STATS aircraft_count = COUNT_DISTINCT(icao24),
+                last_seen = MAX(@timestamp),
+                callsigns = VALUES(callsign),
+                countries = VALUES(origin_country)
+          BY callsign_prefix, defunct_airline_name, defunct_country,
+             defunct_icao, operations.ceased.text
+        | SORT aircraft_count DESC
+
+  # WORKAROUND(#9): Write ES|QL results to cache index so agents can
+  # retrieve them when workflow outputs are null on Stack 9.3.x.
+  # Remove once https://github.com/face0b1101/adsb-demo/issues/9 is resolved.
+  - name: cache_detections
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: "/adsb-enrichment-cache/_doc/defunct-callsign-detections"
+      body:
+        type: "defunct_callsign_detections"
+        raw: "{{ steps.detect_defunct_callsigns.output | json }}"
+        updated_at: "{{ execution.startedAt }}"
+    on-failure:
+      continue: true

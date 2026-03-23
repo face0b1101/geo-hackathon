@@ -9,16 +9,17 @@ notifications.
 
 ## Inventory
 
-| File                                    | Trigger                                  | Purpose                                                            |
-| --------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
-| `adsb-aggregate-stats.yaml`             | Manual                                   | Aggregate 24 h of ADS-B statistics (also exposed as an agent tool) |
-| `daily-flight-briefing.yaml`            | Scheduled (08:00 Europe/London) + manual | AI-generated daily briefing posted to Slack                        |
-| `squawk-7500-hijack-investigation.yaml` | Alert + manual                           | End-to-end hijack signal investigation with case management        |
-| `squawk-7500-enrich.yaml`               | Manual (agent tool)                      | Gather enrichment data for a squawk 7500 investigation             |
-| `squawk-7500-create-case.yaml`          | Manual (agent tool)                      | Create or update a Kibana case for a squawk 7500 investigation     |
-| `adsb-aircraft-history.yaml`            | Manual (agent tool)                      | Aircraft history report — aggregations, positions, external APIs   |
-| `adsb-airport-activity.yaml`            | Manual (agent tool)                      | Airport activity report — ES\|QL traffic, flights, hourly profile  |
-| `hijack-cases-summary.yaml`             | Manual (agent tool)                      | Fetch squawk 7500 investigation cases for the daily briefing       |
+| File                                    | Trigger                                  | Purpose                                                                      |
+| --------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------- |
+| `adsb-aggregate-stats.yaml`             | Manual                                   | Aggregate 24 h of ADS-B statistics (also exposed as an agent tool)           |
+| `daily-flight-briefing.yaml`            | Scheduled (08:00 Europe/London) + manual | AI-generated daily briefing posted to Slack                                  |
+| `squawk-7500-hijack-investigation.yaml` | Alert + manual                           | End-to-end hijack signal investigation with case management                  |
+| `squawk-7500-enrich.yaml`               | Manual (agent tool)                      | Gather enrichment data for a squawk 7500 investigation                       |
+| `squawk-7500-create-case.yaml`          | Manual (agent tool)                      | Create or update a Kibana case for a squawk 7500 investigation               |
+| `adsb-aircraft-history.yaml`            | Manual (agent tool)                      | Aircraft history report — aggregations, positions, external APIs             |
+| `adsb-airport-activity.yaml`            | Manual (agent tool)                      | Airport activity report — ES\|QL traffic, flights, hourly profile            |
+| `adsb-defunct-callsign-detector.yaml`   | Scheduled (07:30 Europe/London) + manual | Detect aircraft using defunct airline callsign prefixes (ES\|QL LOOKUP JOIN) |
+| `hijack-cases-summary.yaml`             | Manual (agent tool)                      | Fetch squawk 7500 investigation cases for the daily briefing                 |
 
 ## System overview
 
@@ -41,6 +42,7 @@ flowchart LR
         CreateCase["Squawk 7500\nCreate Case"]
         AircraftHistory["ADS-B Aircraft\nHistory"]
         AirportActivity["ADS-B Airport\nActivity (ES|QL)"]
+        DefunctCallsign["Defunct Callsign\nDetector (ES|QL)"]
     end
 
     subgraph agents [AI Agents]
@@ -63,8 +65,10 @@ flowchart LR
     Manual --> CreateCase
     Manual --> AircraftHistory
     Manual --> AirportActivity
+    Manual --> DefunctCallsign
 
     DailyBriefing -->|"step: aggregate"| AggStats
+    DailyBriefing -->|"step: esql"| DefunctCallsign
     DailyBriefing -->|"step: ai.agent"| BriefingAgent
     DailyBriefing --> Slack
 
@@ -72,6 +76,7 @@ flowchart LR
 
     TrackingAgent -.->|"workflow tool"| AircraftHistory
     TrackingAgent -.->|"workflow tool"| AirportActivity
+    TrackingAgent -.->|"workflow tool"| DefunctCallsign
 
     HijackInvestigation -->|"step: ai.agent"| HijackAgent
     HijackInvestigation --> Slack
@@ -274,13 +279,13 @@ one exists, adds the assessment as a comment; otherwise creates a new case.
 
 **Inputs:**
 
-| Name         | Type   | Required | Description                        |
-| ------------ | ------ | -------- | ---------------------------------- |
-| `icao24`     | string | yes      | ICAO 24-bit aircraft address (hex) |
-| `callsign`   | string | no       | Flight callsign                    |
-| `triage_assessment` | string | yes | `genuine` or `false_positive`   |
-| `confidence` | string | yes      | Confidence score (0--1)            |
-| `reasoning`  | string | yes      | Full assessment reasoning text     |
+| Name                | Type   | Required | Description                        |
+| ------------------- | ------ | -------- | ---------------------------------- |
+| `icao24`            | string | yes      | ICAO 24-bit aircraft address (hex) |
+| `callsign`          | string | no       | Flight callsign                    |
+| `triage_assessment` | string | yes      | `genuine` or `false_positive`      |
+| `confidence`        | string | yes      | Confidence score (0--1)            |
+| `reasoning`         | string | yes      | Full assessment reasoning text     |
 
 ```mermaid
 flowchart TD
@@ -308,10 +313,10 @@ Specialist agent.
 
 **Inputs:**
 
-| Name       | Type   | Required | Default    | Description                           |
-| ---------- | ------ | -------- | ---------- | ------------------------------------- |
-| `icao24`   | string | yes      | —          | ICAO 24-bit aircraft address (hex)    |
-| `lookback` | string | no       | `now-24h`  | Lookback period in ES date math       |
+| Name       | Type   | Required | Default   | Description                        |
+| ---------- | ------ | -------- | --------- | ---------------------------------- |
+| `icao24`   | string | yes      | —         | ICAO 24-bit aircraft address (hex) |
+| `lookback` | string | no       | `now-24h` | Lookback period in ES date math    |
 
 ```mermaid
 flowchart TD
@@ -345,23 +350,23 @@ names (e.g. "Heathrow"), IATA codes (e.g. "LHR"), or ICAO/GPS codes (e.g.
 
 **Inputs:**
 
-| Name       | Type   | Required | Default    | Description                                      |
-| ---------- | ------ | -------- | ---------- | ------------------------------------------------ |
-| `airport`  | string | yes      | —          | Airport name, IATA code, or ICAO/GPS code        |
-| `lookback` | string | no       | `now-24h`  | Lookback period in ES date math                  |
+| Name       | Type   | Required | Default   | Description                               |
+| ---------- | ------ | -------- | --------- | ----------------------------------------- |
+| `airport`  | string | yes      | —         | Airport name, IATA code, or ICAO/GPS code |
+| `lookback` | string | no       | `now-24h` | Lookback period in ES date math           |
 
 **Steps:**
 
-| #  | Step name            | What it returns                                                         |
-| -- | -------------------- | ----------------------------------------------------------------------- |
-| 1  | `resolve_airport`    | Up to 5 matching airports (IATA code, name, type, Wikipedia link)       |
-| 2  | `traffic_summary`    | Unique aircraft, unique flights, total observations, time range         |
-| 3  | `activity_breakdown` | Deduplicated flight counts by activity (arriving, departing, etc.)      |
-| 4  | `hourly_traffic`     | Unique aircraft per hour (for peak/quiet analysis)                      |
-| 5  | `top_flights`        | Up to 25 callsigns with time windows, origin countries, activity        |
-| 6  | `origin_countries`   | Up to 15 countries by unique aircraft count                             |
-| 7  | `emergency_squawks`  | Unique aircraft per emergency squawk code (7500, 7600, 7700)            |
-| 8  | `recent_positions`   | Up to 500 recent position observations with full field set              |
+| #   | Step name            | What it returns                                                    |
+| --- | -------------------- | ------------------------------------------------------------------ |
+| 1   | `resolve_airport`    | Up to 5 matching airports (IATA code, name, type, Wikipedia link)  |
+| 2   | `traffic_summary`    | Unique aircraft, unique flights, total observations, time range    |
+| 3   | `activity_breakdown` | Deduplicated flight counts by activity (arriving, departing, etc.) |
+| 4   | `hourly_traffic`     | Unique aircraft per hour (for peak/quiet analysis)                 |
+| 5   | `top_flights`        | Up to 25 callsigns with time windows, origin countries, activity   |
+| 6   | `origin_countries`   | Up to 15 countries by unique aircraft count                        |
+| 7   | `emergency_squawks`  | Unique aircraft per emergency squawk code (7500, 7600, 7700)       |
+| 8   | `recent_positions`   | Up to 500 recent position observations with full field set         |
 
 All steps return ES|QL columnar output (`columns` + `values` arrays).
 
@@ -387,7 +392,43 @@ flowchart TD
 
 ______________________________________________________________________
 
-## 8. Hijack Cases Summary
+## 8. Defunct Callsign Detector
+
+**File:** `adsb-defunct-callsign-detector.yaml`
+**Trigger:** scheduled (daily at 07:30 Europe/London) + manual (registered as a workflow tool)
+**Index:** `demos-aircraft-adsb` (source), `adsb-airlines-defunct` (lookup)
+**Tags:** `adsb`, `callsign`, `defunct`, `esql`
+
+Cross-references the last 24 hours of ADS-B callsign prefixes against a lookup
+index of 781 known defunct airlines using ES|QL LOOKUP JOIN. Detects aircraft
+broadcasting callsign prefixes that match airlines which have ceased operations.
+
+Results are investigative leads — matches may indicate stale transponder
+configurations, reallocated ICAO designators, or genuinely suspicious activity.
+The workflow also runs inline as a step in the Daily Flight Briefing.
+
+**ES|QL query:**
+
+The core query extracts the 3-character prefix from each callsign, joins against
+the `adsb-airlines-defunct` lookup index, filters to matches, and aggregates by
+defunct airline with aircraft counts and observed callsigns.
+
+**Steps:**
+
+| #   | Step name                  | What it does                                                |
+| --- | -------------------------- | ----------------------------------------------------------- |
+| 1   | `detect_defunct_callsigns` | ES                                                          |
+| 2   | `cache_detections`         | Write results to `adsb-enrichment-cache` (Stack workaround) |
+
+```mermaid
+flowchart LR
+    Trigger["Schedule 07:30\nor manual"] --> ESQL["detect_defunct_callsigns\nES|QL LOOKUP JOIN\n24h window"]
+    ESQL --> Cache["cache_detections\nadsb-enrichment-cache"]
+```
+
+______________________________________________________________________
+
+## 9. Hijack Cases Summary
 
 **File:** `hijack-cases-summary.yaml`
 **Trigger:** manual (registered as a workflow tool)
@@ -414,11 +455,12 @@ registered so it can trigger workflows on the user's behalf.
 ### ADS-B Tracking Specialist (`adsb_agent`)
 
 - **Config:** `../agents/adsb-agent.json`
-- **Workflow tools:** `adsb-aircraft-history`, `adsb-airport-activity`
+- **Workflow tools:** `adsb-aircraft-history`, `adsb-airport-activity`, `adsb-defunct-callsign-detector`
 - **Role:** General-purpose flight tracking and ad-hoc ADS-B queries. Uses the
-  Aircraft History workflow for per-aircraft reports and the Airport Activity
-  workflow for per-airport reports. Also has direct Elasticsearch platform tools
-  for ad-hoc queries.
+  Aircraft History workflow for per-aircraft reports, the Airport Activity
+  workflow for per-airport reports, and the Defunct Callsign Detector for
+  identifying aircraft using callsign prefixes of defunct airlines. Also has
+  direct Elasticsearch platform tools for ad-hoc queries.
 
 ### Daily Briefing Analyst (`adsb_daily_briefing_agent`)
 
@@ -426,7 +468,9 @@ registered so it can trigger workflows on the user's behalf.
 - **Workflow tools:** `adsb-aggregate-stats`
 - **Role:** Generates and discusses daily ADS-B flight briefings. When a user
   asks for a briefing in chat, the agent calls the Aggregate Stats workflow,
-  waits for results, and formats them into a structured report.
+  waits for results, and formats them into a structured report. The Daily Flight
+  Briefing workflow also runs the Defunct Callsign Detector query inline (section
+  8\) and includes matches as section 11 of the briefing.
 
 ### Hijack Assessment Analyst (`adsb_hijack_assessment_agent`)
 

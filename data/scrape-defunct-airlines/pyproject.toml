@@ -1,0 +1,21 @@
+[project]
+name = "scrape-defunct-airlines"
+version = "1.0.0"
+description = "Scrape defunct airline data from Wikipedia for the ADS-B demo lookup index"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dateutil",
+    "requests",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.7",
+]

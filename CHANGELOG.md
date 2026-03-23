@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-03-23
+
+### Added
+
+- **Defunct callsign detector** — new ES|QL workflow (`adsb-defunct-callsign-detector.yaml`) that cross-references live ADS-B callsign prefixes against a lookup index of 781 known defunct airlines using `LOOKUP JOIN`; configurable lookback (default 24 hours, max 30 days); scheduled daily at 07:30 Europe/London and available on-demand as an agent tool
+- **Defunct airlines lookup index** (`adsb-airlines-defunct`) — Elasticsearch lookup-mode index containing 781 defunct airlines with ICAO designator codes, sourced from Wikipedia (CC BY-SA 4.0); fields include callsign prefix, airline name, country, region, ICAO/IATA codes, telephony callsign, operational dates, and notes; data file at `data/adsb-airlines-defunct-data.ndjson`, last scraped 23 March 2026
+- **Defunct airlines scraper** (`data/scrape-defunct-airlines/`) — optional Python tool (uv, Python 3.13, ruff) to regenerate the dataset from Wikipedia via the Jina Reader API; scrapes 11 pages (5 regional + India, US ×4, UK), parses markdown tables, and outputs bulk NDJSON with date parsing via `python-dateutil`
+- **CC BY-SA 4.0 licence file** (`data/adsb-airlines-defunct-LICENCE.md`) — attribution, source links, changes statement, and ShareAlike declaration for the Wikipedia-derived dataset
+- **Daily briefing integration** — added `defunct_callsign_scan` ES|QL step to the Daily Flight Briefing workflow; results are passed to the briefing agent as section 11 (defunct callsign detections)
+- **Agent tool** — registered `adsb-defunct-callsign-detector` as a workflow tool for the ADS-B Tracking Specialist agent with structured markdown report format, cache fallback instructions, and interpretation guidance for code reuse vs genuine anomalies
+
+### Changed
+
+- **API key privileges** — simplified index names in the role descriptor from explicit list (`adsb-airports-geo`, `adsb-enrichment-cache`, etc.) to `adsb*` glob, covering all current and future `adsb-` prefixed indices; updated in both `setup.sh` service user role and `README.md` API key example
+- **ADS-B agent** (`adsb-agent.json`) — added `adsb-defunct-callsign-detector` to tool_ids and appended "Defunct Callsign Detection" instructions section with report format, cache fallback, and interpretation context
+- **Daily briefing agent** (`adsb-daily-briefing-agent.json`) — added briefing section 11 (defunct callsign detections) to the instructions
+- **`setup.sh`** — added `adsb-airlines-defunct` index to `setup_indices()`, added defunct callsign detector workflow deployment with `register_wf_tool`, updated service user privileges to `adsb*`
+
 ## [1.8.0] - 2026-03-22
 
 ### Added

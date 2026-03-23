@@ -48,7 +48,7 @@ The OpenSky API requires an OAuth2 bearer token (client-credentials grant via Ke
 
 The pipelines work around this by chaining a `heartbeat` input with two `http` filter plugins:
 
-```
+```txt
 heartbeat (every 360 s)
   │
   ▼
@@ -74,7 +74,7 @@ If either HTTP call fails, the event is tagged `_httprequestfailure` and dropped
 
 The setup script deploys three AI agents via the Kibana Agent Builder:
 
-- **Aircraft ADS-B Tracking Specialist** — answers natural-language questions about flight data: locate aircraft by callsign or ICAO24, query positions over geographic regions, analyse altitude and speed patterns, and aggregate flights by country or region. Includes an **aircraft history report** tool that generates comprehensive reports for individual aircraft — flight itinerary with callsigns and airports, airframe details from [adsbdb](https://www.adsbdb.com), live position from [adsb.lol](https://adsb.lol), related Kibana cases, and a link to the Aircraft Detail dashboard.
+- **Aircraft ADS-B Tracking Specialist** — answers natural-language questions about flight data: locate aircraft by callsign or ICAO24, query positions over geographic regions, analyse altitude and speed patterns, and aggregate flights by country or region. Includes an **aircraft history report** tool that generates comprehensive reports for individual aircraft — flight itinerary with callsigns and airports, airframe details from [adsbdb](https://www.adsbdb.com), live position from [adsb.lol](https://adsb.lol), related Kibana cases, and a link to the Aircraft Detail dashboard. Also includes a **defunct callsign detector** that scans for aircraft using callsign prefixes from known defunct airlines.
 - **ADS-B Daily Briefing Analyst** — generates and discusses daily aviation briefings from aggregated ADS-B data.
 - **Squawk 7500 Hijack Assessment Analyst** — evaluates squawk 7500 (hijack) signals using flight history, external enrichment, and AI-powered false-positive analysis.
 
@@ -101,6 +101,8 @@ The setup script deploys several [Elastic Workflows](https://www.elastic.co/docs
 5. Routes based on AI triage assessment — Slack notification for genuine threats, tagging for false positives
 
 **Aircraft History Report** — triggered by the ADS-B tracking agent when a user asks about a specific aircraft's recent movements (e.g. "where has 406bbb been in the last 30 days?"). The workflow gathers flight summary aggregations, position samples, airframe details from adsbdb, live position from adsb.lol, and related Kibana cases. The agent composes the data into a structured markdown report with a link to the Aircraft Detail dashboard.
+
+**Defunct Callsign Detector** — runs daily at 07:30 Europe/London and on-demand via the ADS-B tracking agent. Uses ES|QL LOOKUP JOIN to cross-reference live ADS-B callsign prefixes against a lookup index of 781 known defunct airlines (sourced from Wikipedia). Detects aircraft broadcasting callsign prefixes from airlines that have ceased operations — results are investigative leads for stale transponder configurations, reallocated ICAO designators, or suspicious activity. Also runs inline as part of the Daily Flight Briefing.
 
 Supporting workflows (`squawk-7500-enrich`, `squawk-7500-create-case`, `hijack-cases-summary`, `adsb-aggregate-stats`) are deployed as agent tools.
 
@@ -151,9 +153,8 @@ POST /_security/api_key
         {
           "names": [
             "geo.shapes-world.countries-50m",
-            "adsb-airports-geo",
-            "demos-aircraft-adsb*",
-            "adsb-enrichment-cache"
+            "adsb*",
+            "demos-aircraft-adsb*"
           ],
           "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
         }
@@ -317,7 +318,10 @@ make setup FORCE=1
 ├── setup.sh                                          # Setup script (--only, --force supported)
 ├── data/
 │   ├── geo-shapes-world-countries-50m-data.json      # Country boundary geo-shapes (bulk data)
-│   └── adsb-airports-geo-data.ndjson                 # 893 airports with multilingual names, ICAO codes, and coverage polygons
+│   ├── adsb-airports-geo-data.ndjson                 # 893 airports with multilingual names, ICAO codes, and coverage polygons
+│   ├── adsb-airlines-defunct-data.ndjson              # 781 defunct airlines with ICAO codes (Wikipedia, CC BY-SA 4.0)
+│   ├── adsb-airlines-defunct-LICENCE.md               # CC BY-SA 4.0 attribution for the defunct airlines dataset
+│   └── scrape-defunct-airlines/                       # Optional Python tool to regenerate defunct airlines data
 ├── elasticsearch/
 │   ├── agents/
 │   │   ├── adsb-agent.json                           # AI agent definition (Aircraft ADS-B Tracking Specialist)
@@ -329,6 +333,7 @@ make setup FORCE=1
 │   ├── indices/
 │   │   ├── geo-shapes-world-countries-50m-mapping.json # Source index mapping for country boundaries
 │   │   ├── adsb-airports-geo-mapping.json            # Source index mapping for airports (Natural Earth + coverage)
+│   │   ├── adsb-airlines-defunct-mapping.json         # Lookup index mapping for defunct airlines
 │   │   └── adsb-index-template.json                  # Index template for the data stream
 │   ├── kibana/
 │   │   └── adsb-saved-objects.ndjson                 # Kibana saved objects (dashboards, data views)
@@ -341,7 +346,8 @@ make setup FORCE=1
 │       ├── squawk-7500-enrich.yaml                   # Workflow: hijack enrichment (agent tool)
 │       ├── squawk-7500-create-case.yaml              # Workflow: case creation/update (agent tool)
 │       ├── hijack-cases-summary.yaml                 # Workflow: hijack cases summary (agent tool)
-│       └── adsb-aircraft-history.yaml                # Workflow: aircraft history report (agent tool)
+│       ├── adsb-aircraft-history.yaml                # Workflow: aircraft history report (agent tool)
+│       └── adsb-defunct-callsign-detector.yaml        # Workflow: defunct callsign detection (ES|QL LOOKUP JOIN)
 └── logstash/
     ├── config/
     │   ├── logstash.yml                              # Logstash node settings
@@ -412,3 +418,5 @@ Flight tracking data is provided by [The OpenSky Network](https://opensky-networ
 > In _Proceedings of the 13th IEEE/ACM International Symposium on Information Processing in Sensor Networks (IPSN)_, pages 83-94, April 2014.
 
 This project is not affiliated with or endorsed by the OpenSky Network. Please review the [OpenSky Network terms of use](https://opensky-network.org/about/terms-of-use) before operating this demo.
+
+Defunct airline reference data is derived from the [List of defunct airlines](https://en.wikipedia.org/wiki/List_of_defunct_airlines) articles on Wikipedia, authored by Wikipedia contributors, and is licensed under the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence (CC BY-SA 4.0). See `data/adsb-airlines-defunct-LICENCE.md` for full attribution and scope.

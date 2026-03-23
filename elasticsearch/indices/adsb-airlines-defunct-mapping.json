@@ -1,0 +1,36 @@
+{
+  "settings": {
+    "index": {
+      "mode": "lookup"
+    }
+  },
+  "mappings": {
+    "properties": {
+      "callsign_prefix":       { "type": "keyword" },
+      "defunct_airline_name":   { "type": "keyword" },
+      "defunct_icao":           { "type": "keyword" },
+      "defunct_iata":           { "type": "keyword" },
+      "defunct_callsign":       { "type": "keyword" },
+      "defunct_country":        { "type": "keyword" },
+      "defunct_region":         { "type": "keyword" },
+      "operations": {
+        "properties": {
+          "commenced": {
+            "properties": {
+              "date":            { "type": "date", "format": "yyyy||yyyy-MM||yyyy-MM-dd", "ignore_malformed": true },
+              "text":            { "type": "keyword" }
+            }
+          },
+          "ceased": {
+            "properties": {
+              "date":            { "type": "date", "format": "yyyy||yyyy-MM||yyyy-MM-dd", "ignore_malformed": true },
+              "text":            { "type": "keyword" }
+            }
+          }
+        }
+      },
+      "notes":                  { "type": "text" },
+      "source_url":             { "type": "keyword" }
+    }
+  }
+}
