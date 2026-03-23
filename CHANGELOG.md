@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-03-23
+
+### Fixed
+
+- **`setup.sh` Bash 3.2 compatibility** — replaced `declare -A` associative array with a POSIX-friendly `case` helper function; the unquoted keys triggered `set -u` (`space: unbound variable`) on stock macOS Bash ([#14](https://github.com/face0b1101/adsb-demo/issues/14))
+
 ## [1.9.0] - 2026-03-23
 
 ### Added
@@ -388,4 +394,5 @@ Kibana dashboards.
 [1.7.0]: https://github.com/face0b1101/adsb-demo/compare/v1.6.2...v1.7.0
 [1.8.0]: https://github.com/face0b1101/adsb-demo/compare/v1.7.0...v1.8.0
 [1.9.0]: https://github.com/face0b1101/adsb-demo/compare/v1.8.0...v1.9.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.0...HEAD
+[1.9.1]: https://github.com/face0b1101/adsb-demo/compare/v1.9.0...v1.9.1
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.1...HEAD
