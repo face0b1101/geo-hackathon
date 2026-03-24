@@ -422,3 +422,17 @@ Flight tracking data is provided by [The OpenSky Network](https://opensky-networ
 This project is not affiliated with or endorsed by the OpenSky Network. Please review the [OpenSky Network terms of use](https://opensky-network.org/about/terms-of-use) before operating this demo.
 
 Defunct airline reference data is derived from the [List of defunct airlines](https://en.wikipedia.org/wiki/List_of_defunct_airlines) articles on Wikipedia, authored by Wikipedia contributors, and is licensed under the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence (CC BY-SA 4.0). See `data/adsb-airlines-defunct-LICENCE.md` for full attribution and scope.
+
+## AI Coding Agent Skills
+
+If you develop on this project using an AI coding agent (Cursor, Claude Code, GitHub Copilot, Windsurf, etc.), the [Elastic Agent Skills](https://github.com/elastic/agent-skills) library provides curated skills that teach agents how to work correctly with Elasticsearch, Kibana, and the wider Elastic Stack. Skills cover ES|QL, dashboards, alerting, connectors, Agent Builder, Workflows, Cloud provisioning, Observability, and Security.
+
+Install skills for your agent with:
+
+```bash
+npx skills add elastic/agent-skills
+```
+
+The [elastic-docs](https://cursor.com/marketplace/elastic) MCP server plugin (available in the Cursor Marketplace and other compatible IDEs) gives agents real-time search and retrieval of Elastic product documentation at elastic.co/docs.
+
+See `AGENTS.md` for project-specific conventions that supplement the skills.
