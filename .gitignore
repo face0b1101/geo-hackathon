@@ -18,7 +18,6 @@ Thumbs.db
 *.log
 
 # Project-specific
-hive-mind/
 docker-compose.override.yml
 logstash/files/*
 !logstash/files/.gitkeep
