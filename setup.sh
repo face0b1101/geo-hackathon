@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR"
 FORCE=false
 SKIP_SERVICE_USER=false
 SELECTED_GROUPS=""
-ALL_GROUPS="space ilm indices enrich pipelines kibana cases workflows agents"
+ALL_GROUPS="space ilm indices enrich pipelines kibana cases workflows agents demouser"
 
 usage() {
   cat <<EOF
@@ -185,6 +185,15 @@ run_curl() {
 
   echo "  OK (HTTP $http_code)"
   rm -f "$tmpfile"
+}
+
+warn_on_fail() {
+  local label="$1"; shift
+  local http_code
+  http_code=$(curl -s -w '%{http_code}' -o /dev/null "$@")
+  if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+    echo "  WARNING: $label failed (HTTP $http_code)" >&2
+  fi
 }
 
 ndjson_doc_count() {
@@ -667,9 +676,9 @@ setup_kibana() {
   fi
 
   local import_success
-  import_success=$(jq -r '.success // true' < "$import_tmp" || echo "True")
+  import_success=$(jq -r '.success // true' < "$import_tmp" || echo "true")
 
-  if [[ "$import_success" == "False" ]]; then
+  if [[ "$import_success" == "false" ]]; then
     if [[ "$FORCE" == "true" ]]; then
       echo "  PARTIAL FAILURE (HTTP $import_http):" >&2
       jq -r '
@@ -1082,7 +1091,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$workflow_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_wf_id" \
         -H "kbn-xsrf: true" \
@@ -1115,7 +1124,7 @@ setup_workflows() {
     wf_id=$(jq -r '.id // empty' < "$wf_tmp" 2>/dev/null || true)
 
     if [[ -z "$existing_wf_id" && -n "$wf_id" ]]; then
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$wf_id" \
         -H "kbn-xsrf: true" \
@@ -1172,7 +1181,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$hijack_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_hijack_id" \
         -H "kbn-xsrf: true" \
@@ -1205,7 +1214,7 @@ setup_workflows() {
     hijack_wf_id=$(jq -r '.id // empty' < "$hijack_tmp" 2>/dev/null || true)
 
     if [[ -z "$existing_hijack_id" && -n "$hijack_wf_id" ]]; then
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$hijack_wf_id" \
         -H "kbn-xsrf: true" \
@@ -1308,7 +1317,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$enrich_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_enrich_id" \
         -H "kbn-xsrf: true" \
@@ -1339,7 +1348,7 @@ setup_workflows() {
     enrich_wf_id=$(jq -r '.id // empty' < "$enrich_tmp" 2>/dev/null || true)
 
     if [[ -z "$existing_enrich_id" && -n "$enrich_wf_id" ]]; then
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$enrich_wf_id" \
         -H "kbn-xsrf: true" \
@@ -1394,7 +1403,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$case_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_case_id" \
         -H "kbn-xsrf: true" \
@@ -1425,7 +1434,7 @@ setup_workflows() {
     case_wf_id=$(jq -r '.id // empty' < "$case_tmp" 2>/dev/null || true)
 
     if [[ -z "$existing_case_id" && -n "$case_wf_id" ]]; then
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$case_wf_id" \
         -H "kbn-xsrf: true" \
@@ -1479,7 +1488,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$agg_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_agg_id" \
         -H "kbn-xsrf: true" \
@@ -1516,7 +1525,7 @@ setup_workflows() {
   agg_wf_id=$(jq -r '.id // empty' < "$agg_tmp" 2>/dev/null || true)
 
   if [[ -z "$existing_agg_id" && -n "$agg_wf_id" ]]; then
-    curl -s -o /dev/null \
+    warn_on_fail "Setting workflow name" \
       -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
       -X PUT "$KB_BASE/api/workflows/$agg_wf_id" \
       -H "kbn-xsrf: true" \
@@ -1570,7 +1579,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$hist_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_hist_id" \
         -H "kbn-xsrf: true" \
@@ -1607,7 +1616,7 @@ setup_workflows() {
   hist_wf_id=$(jq -r '.id // empty' < "$hist_tmp" 2>/dev/null || true)
 
   if [[ -z "$existing_hist_id" && -n "$hist_wf_id" ]]; then
-    curl -s -o /dev/null \
+    warn_on_fail "Setting workflow name" \
       -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
       -X PUT "$KB_BASE/api/workflows/$hist_wf_id" \
       -H "kbn-xsrf: true" \
@@ -1661,7 +1670,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$arpt_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_arpt_id" \
         -H "kbn-xsrf: true" \
@@ -1700,7 +1709,7 @@ setup_workflows() {
     arpt_wf_id=$(jq -r '.id // empty' < "$arpt_tmp" 2>/dev/null || true)
 
     if [[ -z "$existing_arpt_id" && -n "$arpt_wf_id" ]]; then
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$arpt_wf_id" \
         -H "kbn-xsrf: true" \
@@ -1755,7 +1764,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$hcs_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_hcs_id" \
         -H "kbn-xsrf: true" \
@@ -1792,7 +1801,7 @@ setup_workflows() {
   hcs_wf_id=$(jq -r '.id // empty' < "$hcs_tmp" 2>/dev/null || true)
 
   if [[ -z "$existing_hcs_id" && -n "$hcs_wf_id" ]]; then
-    curl -s -o /dev/null \
+    warn_on_fail "Setting workflow name" \
       -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
       -X PUT "$KB_BASE/api/workflows/$hcs_wf_id" \
       -H "kbn-xsrf: true" \
@@ -1845,7 +1854,7 @@ setup_workflows() {
         -H "x-elastic-internal-origin: kibana" \
         -H "Content-Type: application/json" \
         -d "$dcd_yaml")
-      curl -s -o /dev/null \
+      warn_on_fail "Setting workflow name" \
         -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
         -X PUT "$KB_BASE/api/workflows/$existing_dcd_id" \
         -H "kbn-xsrf: true" \
@@ -1882,7 +1891,7 @@ setup_workflows() {
   dcd_wf_id=$(jq -r '.id // empty' < "$dcd_tmp" 2>/dev/null || true)
 
   if [[ -z "$existing_dcd_id" && -n "$dcd_wf_id" ]]; then
-    curl -s -o /dev/null \
+    warn_on_fail "Setting workflow name" \
       -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
       -X PUT "$KB_BASE/api/workflows/$dcd_wf_id" \
       -H "kbn-xsrf: true" \
@@ -1948,6 +1957,227 @@ register_wf_tool() {
 }
 
 # ---------------------------------------------------------------------------
+# Group: demouser
+# ---------------------------------------------------------------------------
+
+create_kibana_role() {
+  local role_name="$1" role_payload="$2"
+
+  if [[ "$FORCE" != "true" ]]; then
+    local check_http
+    check_http=$(curl -s -o /dev/null -w '%{http_code}' \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      "$KB_BASE/api/security/role/$role_name")
+    if [[ "$check_http" == "200" ]]; then
+      echo "  Role '$role_name' already exists — skipping"
+      return 0
+    fi
+  fi
+
+  local role_tmp role_http
+  role_tmp=$(mktemp)
+  role_http=$(curl -s -w '%{http_code}' -o "$role_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -H "kbn-xsrf: true" \
+    -H "Content-Type: application/json" \
+    -X PUT "$KB_BASE/api/security/role/$role_name" \
+    -d "$role_payload")
+
+  if [[ "$role_http" == "400" || "$role_http" == "404" ]]; then
+    echo "  Skipped — roles API not available on this deployment (HTTP $role_http)"
+    rm -f "$role_tmp"
+    _KIBANA_ROLES_UNAVAILABLE=true
+    return 0
+  elif [[ "$role_http" == "403" ]]; then
+    echo "  Skipped — API key lacks privileges to create roles (HTTP 403)"
+    rm -f "$role_tmp"
+    _KIBANA_ROLES_UNAVAILABLE=true
+    return 0
+  elif [[ "$role_http" -lt 200 || "$role_http" -ge 300 ]]; then
+    echo "  WARNING (HTTP $role_http): Could not create role '$role_name'." >&2
+    cat "$role_tmp" >&2
+    rm -f "$role_tmp"
+    return 0
+  fi
+  rm -f "$role_tmp"
+
+  if [[ "$FORCE" == "true" ]]; then
+    echo "  Updated role '$role_name'"
+  else
+    echo "  Created role '$role_name'"
+  fi
+  return 0
+}
+
+create_demo_user() {
+  local username="$1" full_name="$2" email="$3" role="$4" password="$5"
+
+  if [[ "$FORCE" != "true" ]]; then
+    local check_body
+    check_body=$(curl -s \
+      -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+      "$BASE/_security/user/$username")
+    if echo "$check_body" | jq -e ".[\"$username\"]" &>/dev/null; then
+      echo "  User '$username' already exists — skipping (password unchanged)"
+      return 2
+    fi
+  fi
+
+  local user_tmp user_http
+  user_tmp=$(mktemp)
+  user_http=$(curl -s -w '%{http_code}' -o "$user_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X PUT "$BASE/_security/user/$username" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n \
+      --arg pw "$password" \
+      --arg role "$role" \
+      --arg fn "$full_name" \
+      --arg em "$email" \
+      '{password: $pw, full_name: $fn, email: $em, roles: [$role]}')")
+
+  if [[ "$user_http" -lt 200 || "$user_http" -ge 300 ]]; then
+    echo "  WARNING (HTTP $user_http): Could not create user '$username'." >&2
+    cat "$user_tmp" >&2
+    rm -f "$user_tmp"
+    return 1
+  fi
+  rm -f "$user_tmp"
+
+  if [[ "$FORCE" == "true" ]]; then
+    echo "  Updated user '$username' with role '$role'"
+  else
+    echo "  Created user '$username' with role '$role'"
+  fi
+  return 0
+}
+
+setup_demouser() {
+  step_label "Creating demo user roles and users"
+
+  local space_scope
+  if [[ -n "${KB_SPACE:-}" ]]; then
+    space_scope="[\"${KB_SPACE}\"]"
+  else
+    space_scope="[\"*\"]"
+  fi
+
+  # --- Role: adsb-demo-users (audience-facing) ---
+  local viewer_payload
+  viewer_payload=$(jq -n --argjson spaces "$space_scope" '{
+    description: "ADSB Demo Users",
+    elasticsearch: {
+      cluster: [],
+      indices: [
+        {
+          names: ["demos-aircraft-adsb*", "adsb*", "geo.shapes-world.countries-50m"],
+          privileges: ["read", "view_index_metadata"]
+        },
+        {
+          names: [".internal.alerts-*"],
+          privileges: ["read", "write", "view_index_metadata"],
+          allow_restricted_indices: true
+        }
+      ]
+    },
+    kibana: [
+      {
+        base: [],
+        feature: {
+          dashboard_v2: ["read"],
+          discover_v2: ["read"],
+          maps_v2: ["read"],
+          visualize_v2: ["read"],
+          observabilityCasesV3: ["all"],
+          agentBuilder: ["all"],
+          stackAlerts: ["all"],
+          actions: ["read"]
+        },
+        spaces: $spaces
+      }
+    ]
+  }')
+
+  _KIBANA_ROLES_UNAVAILABLE=false
+  create_kibana_role "adsb-demo-users" "$viewer_payload"
+  if [[ "$_KIBANA_ROLES_UNAVAILABLE" == "true" ]]; then
+    echo "  Could not create demo roles — skipping demo user setup"
+    return 0
+  fi
+
+  # --- Role: adsb-demo-power-users (behind-the-scenes presenter) ---
+  local power_payload
+  power_payload=$(jq -n --argjson spaces "$space_scope" '{
+    description: "ADSB Demo Power Users",
+    elasticsearch: {
+      cluster: ["monitor"],
+      indices: [
+        {
+          names: ["demos-aircraft-adsb*", "adsb*", "geo.shapes-world.countries-50m"],
+          privileges: ["read", "view_index_metadata", "monitor"]
+        },
+        {
+          names: [".internal.alerts-*"],
+          privileges: ["read", "write", "view_index_metadata"],
+          allow_restricted_indices: true
+        }
+      ]
+    },
+    kibana: [
+      {
+        base: [],
+        feature: {
+          dashboard_v2: ["read"],
+          discover_v2: ["read"],
+          maps_v2: ["read"],
+          visualize_v2: ["read"],
+          observabilityCasesV3: ["all"],
+          agentBuilder: ["all"],
+          workflowsManagement: ["read"],
+          actions: ["all"],
+          dev_tools: ["all"],
+          indexPatterns: ["read"],
+          savedObjectsManagement: ["read"],
+          advancedSettings: ["read"],
+          stackAlerts: ["all"]
+        },
+        spaces: $spaces
+      }
+    ]
+  }')
+
+  create_kibana_role "adsb-demo-power-users" "$power_payload"
+
+  # --- User: goose (audience-facing) ---
+  local goose_pass goose_rc
+  goose_pass="$(openssl rand -base64 16)"
+  create_demo_user "goose" "Goose" "goose@adsb-demo.local" "adsb-demo-users" "$goose_pass" && goose_rc=$? || goose_rc=$?
+  if [[ "$goose_rc" -eq 0 ]]; then
+    echo ""
+    echo "  ┌─────────────────────────────────────────┐"
+    echo "  │  Demo user: goose                       │"
+    echo "  │  Password:  $goose_pass  │"
+    echo "  │  Role:      adsb-demo-users             │"
+    echo "  └─────────────────────────────────────────┘"
+    echo ""
+  fi
+
+  # --- User: maverick (behind-the-scenes presenter) ---
+  local maverick_pass maverick_rc
+  maverick_pass="$(openssl rand -base64 16)"
+  create_demo_user "maverick" "Maverick" "maverick@adsb-demo.local" "adsb-demo-power-users" "$maverick_pass" && maverick_rc=$? || maverick_rc=$?
+  if [[ "$maverick_rc" -eq 0 ]]; then
+    echo ""
+    echo "  ┌─────────────────────────────────────────┐"
+    echo "  │  Demo user: maverick                    │"
+    echo "  │  Password:  $maverick_pass  │"
+    echo "  │  Role:      adsb-demo-power-users       │"
+    echo "  └─────────────────────────────────────────┘"
+    echo ""
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Run selected groups
 # ---------------------------------------------------------------------------
 
@@ -1967,6 +2197,7 @@ group_enabled "kibana"    && setup_kibana
 group_enabled "cases"     && setup_cases
 group_enabled "workflows" && setup_workflows
 group_enabled "agents"    && setup_agents
+group_enabled "demouser"  && setup_demouser
 
 echo ""
 echo "Setup complete."
