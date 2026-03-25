@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-03-25
+
+### Added
+
+- **Demo user deployment** (`make deploy-demouser`) — creates two pre-configured demo users (`goose` and `maverick`) with least-privilege roles scoped to the demo space; `goose` is audience-facing (dashboards, agents, cases) while `maverick` adds Dev Tools and management access for presenters; passwords are randomly generated and printed to the console; also runs as part of `make setup`
+- **`warn_on_fail` helper** in `setup.sh` — logs a WARNING for non-2xx HTTP responses instead of silently discarding them; applied to workflow name PUT calls that previously had no error handling
+
+### Fixed
+
+- **Saved objects import false positive** — `jq -r` outputs lowercase `"false"` for JSON booleans but the comparison used title-case `"False"`, causing partial import failures with `--force` to be silently ignored
+- **`create_kibana_role` abort on Serverless** — the function returned non-zero for expected skip cases (HTTP 400/404/403), causing `set -e` to abort the script on Serverless deployments; now returns 0 and uses a flag variable for caller detection
+
+### Changed
+
+- **AGENTS.md** — added Elastic Skills & MCP Servers guidance section with skill categories, MCP server usage, and precedence rules; added `deploy-demouser` to Make targets table
+- **README** — added AI coding agent skills section; added Demo Users documentation with user table and deployment instructions; added `deploy-demouser` to Make targets table
+
 ## [1.9.3] - 2026-03-23
 
 ### Fixed
@@ -347,7 +364,7 @@ Kibana dashboards.
 - **Docker volume** changed from `external: true` to managed (auto-created by `docker compose up`)
 - **AGENTS.md** rewritten for actual tech stack (Docker, Logstash, Elasticsearch, Kibana, Bash) — removed Python/UV/Ruff boilerplate
 - **README** rewritten as top-level repo README — removed stale `cd adsb` instruction and `adsb/` path references
-- **`.gitignore`** expanded with IDE (`.idea/`, `.vscode/`), temp (`*.tmp`, `*.bak`), and project-specific (`hive-mind/`, `docker-compose.override.yml`) entries
+- **`.gitignore`** expanded with IDE (`.idea/`, `.vscode/`), temp (`*.tmp`, `*.bak`), and project-specific entries
 - **Repository renamed** from `geo-hackathon` to `adsb-demo`
 
 ### Removed
@@ -403,6 +420,6 @@ Kibana dashboards.
 [1.8.0]: https://github.com/face0b1101/adsb-demo/compare/v1.7.0...v1.8.0
 [1.9.0]: https://github.com/face0b1101/adsb-demo/compare/v1.8.0...v1.9.0
 [1.9.1]: https://github.com/face0b1101/adsb-demo/compare/v1.9.0...v1.9.1
-[1.9.2]: https://github.com/face0b1101/adsb-demo/compare/v1.9.1...v1.9.2
 [1.9.3]: https://github.com/face0b1101/adsb-demo/compare/v1.9.2...v1.9.3
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.9.3...HEAD
+[1.10.0]: https://github.com/face0b1101/adsb-demo/compare/v1.9.3...v1.10.0
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.10.0...HEAD

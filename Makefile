@@ -1,7 +1,7 @@
 FORCE_FLAG := $(if $(FORCE),--force,)
 
 .PHONY: setup setup-no-service-user deploy-ilm deploy-indices deploy-enrich deploy-pipelines deploy-kibana \
-        deploy-cases deploy-workflows deploy-agents deploy-es deploy-ai redeploy \
+        deploy-cases deploy-workflows deploy-agents deploy-demouser deploy-es deploy-ai redeploy \
         up down logs restart status clean \
         validate health ps shell help
 
@@ -38,6 +38,9 @@ deploy-workflows:   ## Deploy Kibana workflows
 
 deploy-agents:      ## Deploy Kibana AI agents
 	./setup.sh --only agents $(FORCE_FLAG)
+
+deploy-demouser:    ## Deploy demo user roles and users
+	./setup.sh --only demouser --no-service-user $(FORCE_FLAG)
 
 deploy-es:          ## Deploy all ES resources (ilm + indices + enrich + pipelines)
 	./setup.sh --only ilm,indices,enrich,pipelines $(FORCE_FLAG)

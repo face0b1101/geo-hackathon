@@ -232,7 +232,25 @@ The script is safe to re-run — existing resources are skipped by default. Use 
 ./setup.sh --help                    # Show available groups and flags
 ```
 
-Available groups: `space`, `ilm`, `indices`, `enrich`, `pipelines`, `kibana`, `agents`, `workflows`. There are also `make` shortcuts for each group — see [Make Targets](#make-targets) below.
+Available groups: `space`, `ilm`, `indices`, `enrich`, `pipelines`, `kibana`, `agents`, `workflows`, `demouser`. There are also `make` shortcuts for each group — see [Make Targets](#make-targets) below.
+
+### Demo Users (optional)
+
+The setup script can create two pre-configured demo users with least-privilege roles — useful for live demos where you want to show the audience experience separately from the implementation details.
+
+```bash
+make deploy-demouser          # Create roles and users (passwords printed to console)
+make deploy-demouser FORCE=1  # Reset passwords and overwrite roles
+```
+
+| User       | Role                    | Purpose                                                                                         |
+| ---------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `goose`    | `adsb-demo-users`       | Audience-facing — dashboards, Discover, maps, AI agents, cases, and workflow viewing            |
+| `maverick` | `adsb-demo-power-users` | Presenter/behind-the-scenes — everything goose has, plus Dev Tools, index stats, and management |
+
+Both users are scoped to the `KB_SPACE` space (if set) and have read-only access to demo indices. Passwords are randomly generated on first run and printed to the terminal — re-running without `FORCE=1` preserves existing passwords.
+
+Demo users are also created automatically as part of `make setup`. Use `--no-service-user` with `--only demouser` if your API key lacks `manage_security`.
 
 ### 4. Run
 
@@ -280,6 +298,7 @@ Run `make help` to see all available targets. Every target is a thin wrapper aro
 | `make deploy-kibana`    | Deploy Kibana saved objects (dashboards, data views)         |
 | `make deploy-workflows` | Deploy Kibana workflows                                      |
 | `make deploy-agents`    | Deploy Kibana AI agents                                      |
+| `make deploy-demouser`  | Deploy demo user roles and users                             |
 | `make deploy-es`        | Deploy all ES resources (ilm + indices + enrich + pipelines) |
 | `make deploy-ai`        | Deploy AI layer (workflows + agents)                         |
 | `make redeploy`         | Re-deploy all resources with `--force`                       |
