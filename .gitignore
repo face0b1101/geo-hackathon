@@ -22,3 +22,8 @@ docker-compose.override.yml
 logstash/files/*
 !logstash/files/.gitkeep
 WORKFLOWS-GH-REPO.md
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
