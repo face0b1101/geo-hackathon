@@ -273,14 +273,67 @@ Concise policy reference for all coding agents touching this repository. Keep re
 
 #### Releases
 
-When the user bumps the version or adds a new `CHANGELOG.md` entry, complete **all four** steps before finishing the task:
+**Trigger:** When the user says **"release-ready"**, execute the full release procedure below without further prompting. Do not stop between steps or ask for confirmation unless a step fails.
 
-1. **Tag** — create a signed annotated tag: `SSH_AUTH_SOCK="$HOME/.bitwarden-ssh-agent.sock" git tag -s -a v<VERSION> -m "<one-line summary>"`.
-2. **Push** — push the tag: `git push origin v<VERSION>`.
-3. **GitHub Release** — create the release: `gh release create v<VERSION> --title "v<VERSION> — <title>" --notes "<notes from CHANGELOG>"`. Mark the newest release `--latest`.
-4. **CHANGELOG links** — ensure the footer link-reference definitions include the new version and `[unreleased]` points from the new tag to `HEAD`.
+**Prerequisites (validate before starting):**
 
-Never leave a CHANGELOG version without a matching git tag and GitHub Release.
+- `[Unreleased]` section in `CHANGELOG.md` is non-empty
+- Working tree is clean (`git status` shows no uncommitted changes apart from CHANGELOG/AGENTS.md)
+- Current branch is `main`
+
+**Procedure:**
+
+1. **Determine version** - read `CHANGELOG.md` `[Unreleased]` entries and the latest tag (`git tag --sort=-v:refname | head -1`). Infer the bump type from the changes:
+
+   - `### Added` sections or new features = minor bump
+   - `### Fixed` / `### Changed` only = patch bump
+   - Breaking changes or user-specified = major bump
+   - If ambiguous, ask the user once: "minor or patch?"
+
+2. **Update CHANGELOG** - rename `## [Unreleased]` content into `## [X.Y.Z] - YYYY-MM-DD` (today's date). Leave an empty `## [Unreleased]` section above it.
+
+3. **Update CHANGELOG footer links** - add the new version's compare link and update `[unreleased]` to point from the new tag to HEAD:
+
+   ```
+   [X.Y.Z]: https://github.com/face0b1101/adsb-demo/compare/vPREV...vX.Y.Z
+   [unreleased]: https://github.com/face0b1101/adsb-demo/compare/vX.Y.Z...HEAD
+   ```
+
+4. **Commit** - stage and commit:
+
+   ```bash
+   git add CHANGELOG.md
+   git commit -m "chore: release vX.Y.Z"
+   ```
+
+   Include any other files modified as part of the release (e.g. AGENTS.md), but do not stage unrelated work.
+
+5. **Tag** - create a signed annotated tag:
+
+   ```bash
+   SSH_AUTH_SOCK="$HOME/.bitwarden-ssh-agent.sock" \
+     git tag -s -a vX.Y.Z -m "<one-line summary from CHANGELOG>"
+   ```
+
+6. **Push** - push commit and tag:
+
+   ```bash
+   git push && git push origin vX.Y.Z
+   ```
+
+7. **GitHub Release** - create the release from the CHANGELOG notes:
+
+   ```bash
+   gh release create vX.Y.Z --title "vX.Y.Z - <title>" \
+     --notes "<notes from CHANGELOG>" --latest
+   ```
+
+8. **Verify** - run `git status` and confirm it shows "up to date with origin". Run `gh release view vX.Y.Z` to confirm the release exists.
+
+**Rules:**
+
+- Never leave a CHANGELOG version without a matching git tag and GitHub Release.
+- If any step fails, stop, report the error, and attempt to fix it before continuing.
 
 ### 5. Pre-flight Checklist
 
@@ -290,6 +343,7 @@ Never leave a CHANGELOG version without a matching git tag and GitHub Release.
 4. Summarise edits, mention tests, and flag follow-up work in the final response.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
@@ -330,8 +384,10 @@ bd close <id>         # Complete work
 7. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
+
 - Work is NOT complete until `git push` succeeds
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+
 <!-- END BEADS INTEGRATION -->

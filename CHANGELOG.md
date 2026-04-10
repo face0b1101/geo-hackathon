@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-04-10
+
+### Fixed
+
+- **Service user API key expired after 7 days** — the `adsb-automation-session` API key minted by `setup.sh` had `"expiration": "7d"`, causing all scheduled workflows (Daily Flight Briefing, Defunct Callsign Detector) and the squawk 7500 alerting rule to silently break one week after each deploy; removed the expiration so the key persists until explicitly invalidated
+
+### Changed
+
+- **AGENTS.md release procedure** — expanded from a four-step checklist into a full automated procedure triggered by "release-ready"; includes version inference from changelog entries, CHANGELOG formatting, commit, signed tag, push, and GitHub Release creation
+
 ## [1.10.0] - 2026-03-25
 
 ### Added
@@ -422,4 +432,5 @@ Kibana dashboards.
 [1.9.1]: https://github.com/face0b1101/adsb-demo/compare/v1.9.0...v1.9.1
 [1.9.3]: https://github.com/face0b1101/adsb-demo/compare/v1.9.2...v1.9.3
 [1.10.0]: https://github.com/face0b1101/adsb-demo/compare/v1.9.3...v1.10.0
-[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.10.0...HEAD
+[1.10.1]: https://github.com/face0b1101/adsb-demo/compare/v1.10.0...v1.10.1
+[unreleased]: https://github.com/face0b1101/adsb-demo/compare/v1.10.1...HEAD

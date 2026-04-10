@@ -299,7 +299,7 @@ setup_serviceuser() {
     -u "${svc_user}:${svc_pass}" \
     -X POST "$BASE/_security/api_key" \
     -H "Content-Type: application/json" \
-    -d '{"name": "adsb-automation-session", "expiration": "7d"}')
+    -d '{"name": "adsb-automation-session"}')
 
   if [[ "$key_http" -lt 200 || "$key_http" -ge 300 ]]; then
     echo "  WARNING (HTTP $key_http): Could not mint API key for service user." >&2
