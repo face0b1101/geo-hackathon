@@ -26,6 +26,7 @@ ______________________________________________________________________
 | `make deploy-workflows`      | Deploy Kibana workflows only                                             |
 | `make deploy-agents`         | Deploy Kibana AI agents only                                             |
 | `make deploy-demouser`       | Deploy demo user roles and users only                                    |
+| `make deploy-cockpit`        | Deploy Cockpit dashboard (Vega PFD) only                                 |
 | `make deploy-es`             | Deploy all ES resources (ilm + indices + enrich + pipelines)             |
 | `make deploy-ai`             | Deploy AI layer (workflows + agents)                                     |
 | `make redeploy`              | Re-deploy all resources (force overwrite)                                |

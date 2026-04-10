@@ -23,6 +23,9 @@ logstash/files/*
 !logstash/files/.gitkeep
 WORKFLOWS-GH-REPO.md
 
+# hive-mind (internal Elastic tooling; not for public repos)
+hive-mind/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

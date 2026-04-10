@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR"
 FORCE=false
 SKIP_SERVICE_USER=false
 SELECTED_GROUPS=""
-ALL_GROUPS="space ilm indices enrich pipelines kibana cases workflows agents demouser"
+ALL_GROUPS="space ilm indices enrich pipelines kibana cases workflows agents demouser cockpit"
 
 usage() {
   cat <<EOF
@@ -2182,6 +2182,63 @@ setup_demouser() {
 }
 
 # ---------------------------------------------------------------------------
+# Group: cockpit
+# ---------------------------------------------------------------------------
+
+setup_cockpit() {
+  STEP=$((STEP + 1))
+
+  local overwrite_param=""
+  if [[ "$FORCE" == "true" ]]; then
+    overwrite_param="?overwrite=true"
+    echo "[$STEP/$TOTAL] Importing Cockpit dashboard (--force: overwriting existing) ..."
+  else
+    echo "[$STEP/$TOTAL] Importing Cockpit dashboard ..."
+  fi
+
+  local import_tmp import_http
+  import_tmp=$(mktemp)
+  import_http=$(curl -s -w '%{http_code}' -o "$import_tmp" \
+    -H "Authorization: ApiKey $ES_API_KEY_ENCODED" \
+    -X POST "$KB_BASE/api/saved_objects/_import${overwrite_param}" \
+    -H "kbn-xsrf: true" \
+    -F "file=@elasticsearch/kibana/cockpit-saved-objects.ndjson")
+
+  if [[ "$import_http" -lt 200 || "$import_http" -ge 300 ]]; then
+    echo "  FAILED (HTTP $import_http):" >&2
+    cat "$import_tmp" >&2
+    rm -f "$import_tmp"
+    exit 1
+  fi
+
+  local import_success
+  import_success=$(jq -r '.success // true' < "$import_tmp" || echo "true")
+
+  if [[ "$import_success" == "false" ]]; then
+    if [[ "$FORCE" == "true" ]]; then
+      echo "  PARTIAL FAILURE (HTTP $import_http):" >&2
+      jq -r '
+        "  \(.successCount // 0) objects imported, \(.errors // [] | length) failed:",
+        (.errors // [] | .[] |
+          "    - \(.type) \"\(.meta.title // "?")\": \(.error.type // "?") (refs: \(.error.references // [] | [.[].id // "?"] | join(", ")))")
+      ' < "$import_tmp" >&2
+      rm -f "$import_tmp"
+      exit 1
+    else
+      local ok_count skipped_count
+      ok_count=$(jq -r '.successCount // 0' < "$import_tmp" 2>/dev/null || echo "0")
+      skipped_count=$(jq -r '.errors // [] | length' < "$import_tmp" 2>/dev/null || echo "0")
+      echo "  OK (HTTP $import_http) — $ok_count imported, $skipped_count skipped (already exist)"
+      rm -f "$import_tmp"
+      return 0
+    fi
+  fi
+
+  echo "  OK (HTTP $import_http) — $(jq -r '.successCount // "?"' < "$import_tmp" || echo "?") objects imported"
+  rm -f "$import_tmp"
+}
+
+# ---------------------------------------------------------------------------
 # Run selected groups
 # ---------------------------------------------------------------------------
 
@@ -2202,6 +2259,7 @@ group_enabled "cases"     && setup_cases
 group_enabled "workflows" && setup_workflows
 group_enabled "agents"    && setup_agents
 group_enabled "demouser"  && setup_demouser
+group_enabled "cockpit"   && setup_cockpit
 
 echo ""
 echo "Setup complete."
