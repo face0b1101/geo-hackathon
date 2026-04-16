@@ -159,6 +159,10 @@ POST /_security/api_key
             "demos-aircraft-adsb*"
           ],
           "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
+        },
+        {
+          "names": ["fm-clone-*"],
+          "privileges": ["manage", "view_index_metadata"]
         }
       ],
       "applications": [
@@ -174,6 +178,8 @@ POST /_security/api_key
 ```
 
 > **Privileges** — `manage_security` is required for the automated [service user](#service-user-automated) that ensures correct attribution of workflow actions in Kibana Cases. The `all` application privilege is equivalent to the `kibana_admin` built-in role — it grants full access to all Kibana features across all spaces, including space management, saved objects, AI agents, workflows, connectors, alerting rules, cases, and advanced settings. This works identically on Cloud Hosted, Observability Serverless, and start-local — each deployment exposes only the features it supports. If your existing API key lacks `manage_security`, `setup.sh` falls back gracefully — the service user step is skipped and actions are attributed to the API key owner.
+>
+> **ILM and `fm-clone-*`** — On Elasticsearch 9.2 and newer, ILM may create short-lived indices named `fm-clone-*` when running force merge before a searchable snapshot. `setup.sh` grants the `adsb-automation` role `manage` and `view_index_metadata` on `fm-clone-*` so lifecycle steps succeed when that user last updated the ILM policy. Include the same `indices` entry in your bootstrap API key’s `role_descriptors` if you create keys manually (see JSON above).
 
 From the response, copy the three values into your `.env` file:
 

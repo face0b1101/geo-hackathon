@@ -228,6 +228,10 @@ setup_serviceuser() {
       {
         "names": ["geo.shapes-world.countries-50m", "adsb*", "demos-aircraft-adsb*"],
         "privileges": ["create_index", "write", "read", "view_index_metadata", "manage"]
+      },
+      {
+        "names": ["fm-clone-*"],
+        "privileges": ["manage", "view_index_metadata"]
       }
     ],
     "applications": [

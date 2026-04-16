@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`adsb-automation` ILM `forcemerge` on frozen searchable snapshots** — extended the service role with `fm-clone-*` (`manage`, `view_index_metadata`) so ILM can complete the temporary clone step used before snapshots on Elasticsearch 9.2+ when the lifecycle policy was last updated by that user
+
 ## [1.10.1] - 2026-04-10
 
 ### Fixed
